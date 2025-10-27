@@ -1,1 +1,0 @@
-#ADI_Luqman_ReadMe
