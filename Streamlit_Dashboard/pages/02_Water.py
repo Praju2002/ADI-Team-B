@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 st.title("Water Service Dashboard")
 
@@ -14,65 +15,51 @@ with col_filters_right:
     selected_year = st.selectbox("Year", options=available_years, index=len(available_years) - 1)
 
 
-def generate_dummy_data() -> dict:
-    countries = available_countries
-    years = available_years
+def generate_monthly_dummy_data(seed: int = 42) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    rows = []
+    for country in available_countries:
+        base_hours = {
+            "Lesotho": 18.0,
+            "Malawi": 16.0,
+            "Uganda": 20.0,
+            "Cameroon": 17.0,
+        }[country]
+        for year in available_years:
+            for month in range(1, 13):
+                seasonal = 1.0 + 0.1 * np.sin((month / 12) * 2 * np.pi)
+                service_hours = np.clip(rng.normal(base_hours * seasonal, 1.2), 10, 24)
 
-    # production_[country].csv mock
-    production_rows = []
-    for country in countries:
-        for year in years:
-            service_hours = 12 + hash((country, year)) % 13  # 12 to 24 hours
-            production_rows.append({
-                "country": country,
-                "year": year,
-                "service_hours": float(service_hours),
-            })
-    production_df = pd.DataFrame(production_rows)
+                tests_conducted_chlorine = int(rng.normal(220, 30))
+                test_conducted_ecoli = int(rng.normal(200, 25))
+                test_passed_chlorine = int(np.clip(tests_conducted_chlorine * rng.uniform(0.85, 0.98), 0, tests_conducted_chlorine))
+                tests_passed_ecoli = int(np.clip(test_conducted_ecoli * rng.uniform(0.88, 0.99), 0, test_conducted_ecoli))
 
-    # w_service_[country].csv mock (water service quality/efficiency)
-    w_service_rows = []
-    for country in countries:
-        for year in years:
-            tests_conducted_chlorine = 200 + (hash((country, year, "cl")) % 100)
-            test_conducted_ecoli = 180 + (hash((country, year, "ec")) % 80)
-            test_passed_chlorine = int(tests_conducted_chlorine * 0.9)
-            tests_passed_ecoli = int(test_conducted_ecoli * 0.92)
-            metered = 8_000 + (hash((country, year, "m")) % 5_000)
-            total_consumption = metered + 2_000 + (hash((country, year, "tc")) % 5_000)
-            w_service_rows.append({
-                "country": country,
-                "year": year,
-                "tests_conducted_chlorine": tests_conducted_chlorine,
-                "test_conducted_ecoli": test_conducted_ecoli,
-                "test_passed_chlorine": test_passed_chlorine,
-                "tests_passed_ecoli": tests_passed_ecoli,
-                "metered": float(metered),
-                "total_consumption": float(total_consumption),
-            })
-    w_service_df = pd.DataFrame(w_service_rows)
+                total_consumption = float(np.clip(rng.normal(18_000, 3_000), 8_000, 30_000))
+                metered_share = np.clip(rng.normal(0.65, 0.1), 0.2, 0.95)
+                metered = float(total_consumption * metered_share)
 
-    # all_fin_service_[country].csv mock (financials)
-    fin_rows = []
-    for country in countries:
-        for year in years:
-            water_revenue = 1_000_000 + (hash((country, year, "wr")) % 500_000)
-            sewer_revenue = 400_000 + (hash((country, year, "sr")) % 250_000)
-            opex = 1_200_000 + (hash((country, year, "ox")) % 400_000)
-            fin_rows.append({
-                "country": country,
-                "year": year,
-                "water_revenue": float(water_revenue),
-                "sewer_revenue": float(sewer_revenue),
-                "opex": float(opex),
-            })
-    fin_df = pd.DataFrame(fin_rows)
+                water_revenue = float(np.clip(rng.normal(120_000, 25_000), 40_000, 220_000))
+                sewer_revenue = float(np.clip(rng.normal(55_000, 12_000), 15_000, 110_000))
+                opex = float(np.clip(rng.normal(160_000, 30_000), 60_000, 280_000))
 
-    return {
-        "production": production_df,
-        "w_service": w_service_df,
-        "fin": fin_df,
-    }
+                rows.append({
+                    "country": country,
+                    "year": year,
+                    "month": month,
+                    "date": pd.Timestamp(year=year, month=month, day=1),
+                    "service_hours": float(service_hours),
+                    "tests_conducted_chlorine": tests_conducted_chlorine,
+                    "test_conducted_ecoli": test_conducted_ecoli,
+                    "test_passed_chlorine": test_passed_chlorine,
+                    "tests_passed_ecoli": tests_passed_ecoli,
+                    "metered": metered,
+                    "total_consumption": total_consumption,
+                    "water_revenue": water_revenue,
+                    "sewer_revenue": sewer_revenue,
+                    "opex": opex,
+                })
+    return pd.DataFrame(rows)
 
 
 def safe_ratio(numerator: float, denominator: float) -> float:
@@ -81,32 +68,22 @@ def safe_ratio(numerator: float, denominator: float) -> float:
     return float(numerator) / float(denominator)
 
 
-data = generate_dummy_data()
+df = generate_monthly_dummy_data()
 
-production_sel = data["production"].query("country == @selected_country and year == @selected_year")
-w_service_sel = data["w_service"].query("country == @selected_country and year == @selected_year")
-fin_sel = data["fin"].query("country == @selected_country and year == @selected_year")
+# Compute KPIs at row level for convenient plotting
+df["quality_compliance_pct"] = (df["test_passed_chlorine"] + df["tests_passed_ecoli"]) / (
+    df["tests_conducted_chlorine"] + df["test_conducted_ecoli"]
+) * 100.0
+df["metering_ratio_pct"] = (df["metered"] / df["total_consumption"]) * 100.0
+df["operating_coverage_pct"] = ((df["sewer_revenue"] + df["water_revenue"]) / df["opex"]) * 100.0
 
-# Continuity of Supply (Service Quality)
-service_hours = float(production_sel["service_hours"].iloc[0]) if not production_sel.empty else 0.0
 
-# Drinking Water Quality Compliance (Service Quality)
-cl_pass = int(w_service_sel["test_passed_chlorine"].iloc[0]) if not w_service_sel.empty else 0
-ec_pass = int(w_service_sel["tests_passed_ecoli"].iloc[0]) if not w_service_sel.empty else 0
-cl_tests = int(w_service_sel["tests_conducted_chlorine"].iloc[0]) if not w_service_sel.empty else 0
-ec_tests = int(w_service_sel["test_conducted_ecoli"].iloc[0]) if not w_service_sel.empty else 0
-compliance_pct = safe_ratio(cl_pass + ec_pass, cl_tests + ec_tests) * 100
-
-# Metering Ratio (Efficiency & Billing)
-metered = float(w_service_sel["metered"].iloc[0]) if not w_service_sel.empty else 0.0
-total_consumption = float(w_service_sel["total_consumption"].iloc[0]) if not w_service_sel.empty else 0.0
-metering_ratio_pct = safe_ratio(metered, total_consumption) * 100
-
-# Operating Cost Coverage (Financial Sustainability)
-sewer_revenue = float(fin_sel["sewer_revenue"].iloc[0]) if not fin_sel.empty else 0.0
-water_revenue = float(fin_sel["water_revenue"].iloc[0]) if not fin_sel.empty else 0.0
-opex = float(fin_sel["opex"].iloc[0]) if not fin_sel.empty else 0.0
-operating_coverage_pct = safe_ratio(sewer_revenue + water_revenue, opex) * 100
+# KPI cards for selected country/year (aggregated across months)
+sel = df[(df["country"] == selected_country) & (df["year"] == selected_year)]
+service_hours = sel["service_hours"].mean() if not sel.empty else 0.0
+compliance_pct = sel["quality_compliance_pct"].mean() if not sel.empty else 0.0
+metering_ratio_pct = sel["metering_ratio_pct"].mean() if not sel.empty else 0.0
+operating_coverage_pct = sel["operating_coverage_pct"].mean() if not sel.empty else 0.0
 
 st.subheader(f"{selected_country} — {selected_year}")
 metric_cols = st.columns(4)
@@ -115,9 +92,66 @@ metric_cols[1].metric("Water Quality Compliance (%)", f"{compliance_pct:,.1f}")
 metric_cols[2].metric("Metering Ratio (%)", f"{metering_ratio_pct:,.1f}")
 metric_cols[3].metric("Operating Cost Coverage (%)", f"{operating_coverage_pct:,.1f}")
 
-with st.expander("Data references (dummy placeholders)"):
-    st.write("production_[country].csv ➜ service_hours")
-    st.write("w_service_[country].csv ➜ tests, metering, consumption")
-    st.write("all_fin_service_[country].csv ➜ water_revenue, sewer_revenue, opex")
+
+# Trend charts for selected country across 2020–2025
+st.markdown("---")
+st.subheader("Trends — Monthly")
+sel_country = df[df["country"] == selected_country]
+
+trend_cols = st.columns(2)
+with trend_cols[0]:
+    st.line_chart(sel_country.set_index("date")["service_hours"], height=220)
+    st.caption("Continuity of Supply (hrs/day)")
+with trend_cols[1]:
+    st.line_chart(sel_country.set_index("date")["quality_compliance_pct"], height=220)
+    st.caption("Drinking Water Quality Compliance (%)")
+
+trend_cols2 = st.columns(2)
+with trend_cols2[0]:
+    st.line_chart(sel_country.set_index("date")["metering_ratio_pct"], height=220)
+    st.caption("Metering Ratio (%)")
+with trend_cols2[1]:
+    st.line_chart(sel_country.set_index("date")["operating_coverage_pct"], height=220)
+    st.caption("Operating Cost Coverage (%)")
+
+
+# Country comparison for selected year (averages)
+st.markdown("---")
+st.subheader(f"Country Comparison — {selected_year}")
+year_avg = (
+    df[df["year"] == selected_year]
+    .groupby("country", as_index=False)[
+        [
+            "service_hours",
+            "quality_compliance_pct",
+            "metering_ratio_pct",
+            "operating_coverage_pct",
+        ]
+    ]
+    .mean()
+)
+
+comp_cols = st.columns(2)
+with comp_cols[0]:
+    st.bar_chart(year_avg.set_index("country")["service_hours"], height=250)
+    st.caption("Continuity of Supply (hrs/day)")
+with comp_cols[1]:
+    st.bar_chart(year_avg.set_index("country")["quality_compliance_pct"], height=250)
+    st.caption("Water Quality Compliance (%)")
+
+comp_cols2 = st.columns(2)
+with comp_cols2[0]:
+    st.bar_chart(year_avg.set_index("country")["metering_ratio_pct"], height=250)
+    st.caption("Metering Ratio (%)")
+with comp_cols2[1]:
+    st.bar_chart(year_avg.set_index("country")["operating_coverage_pct"], height=250)
+    st.caption("Operating Cost Coverage (%)")
+
+
+with st.expander("Formulas"):
+    st.markdown("- Continuity of Supply: service_hours (hrs/day)")
+    st.markdown("- Drinking Water Quality Compliance: ((test_passed_chlorine + tests_passed_ecoli) / (tests_conducted_chlorine + test_conducted_ecoli)) * 100")
+    st.markdown("- Metering Ratio: (metered / total_consumption) * 100")
+    st.markdown("- Operating Cost Coverage: (sewer_revenue + water_revenue) / opex * 100")
 
 
