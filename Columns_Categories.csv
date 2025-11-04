@@ -1,0 +1,103 @@
+Column Name,Category A,Category B,Units (data type) ,Meaning/Formula/ ,Sheet name,Country,Comments,Granularity / Range rules,Frequency
+city,Access and Coverage,,String,Name of the city covered,all_fin_service_cameroon.csv,Cameroon,,City,
+date,Access and Coverage,,String,Month and year of observation (Jan 2020 etc.),all_fin_service_cameroon.csv,Cameroon,,City,month
+sewer_length,Access and Coverage,Production & Billing,Number,Total length of sewer network operational,all_fin_service_cameroon.csv,Cameroon,,City,
+sewer_billed,Access and Coverage,Production & Billing,Number,Total volume of wastewater billed for the month. Indicates customer consumption billed for sewerage.,all_fin_service_cameroon.csv,Cameroon,,City,
+sewer_revenue,Access and Coverage,Production & Billing,Number,Revenue collected from sewerage billing during the month,all_fin_service_cameroon.csv,Cameroon,,City,month
+opex,Access and Coverage,Production & Billing,Number,Operating expenditure (OPEX) monthly operational costs of sewerage and sanitation services.,all_fin_service_cameroon.csv,Cameroon,,City,month
+san_staff,Access and Coverage,Production & Billing,Number ,Number of sanitation staff,all_fin_service_cameroon.csv,Cameroon,,City,
+w_staff,Access and Coverage,Production & Billing,Number,Number of water staff,all_fin_service_cameroon.csv,Cameroon,,City,
+city,Identification,,String,,all_nationalacc_cameroon.csv,Cameroon,,City,
+date,Identification,,Date,,all_nationalacc_cameroon.csv,Cameroon,,City,
+budget_allocated,Production & Billing,,Number,total allocated budget_WASH,all_nationalacc_cameroon.csv,Cameroon,,City,
+san_allocation,Production & Billing,,Number,% sanitation allocation,all_nationalacc_cameroon.csv,Cameroon,,City,
+wat_allocation,Water Supply,,Number,% water allocation,all_nationalacc_cameroon.csv,Cameroon,,City,
+staff_cost,Production & Billing,,Number,staff cost - annual HR,all_nationalacc_cameroon.csv,Cameroon,,City,annual
+water_resources,Access & Coverage,,Number,total renewable resources available,all_nationalacc_cameroon.csv,Cameroon,,City,
+trained_staff,Production & Billing,,Number,trained staff,all_nationalacc_cameroon.csv,Cameroon,,City,
+staff_training_budget,Production & Billing,,Number,budget allocated for staff management,all_nationalacc_cameroon.csv,Cameroon,,City,
+customer_id,TBC - likely Billing ,,Number?,TBC - potentially missing spreadsheet,billing_cameroon.csv,Cameroon,,Country,
+date,TBC - likely Billing ,,Date,TBC - potentially missing spreadsheet,billing_cameroon.csv,Cameroon,,Country,
+consumption_m3,TBC - likely Billing ,,Number ,Monthly water consumption per customer,billing_cameroon.csv,Cameroon,,Country,
+billed,Billing,,Number?,Total paid amount per customer per month,billing_cameroon.csv,Cameroon,,Country,
+paid,Billing,,Boolean?,TBC - potentially missing spreadsheet,billing_cameroon.csv,Cameroon,,Country,
+country,,,string,,all_fin_service_malawi,malawi,,City,
+city,,,string,,all_fin_service_malawi,malawi,,City,
+date,,,date,,all_fin_service_malawi,malawi,,City,
+sewer_length,Production and Billing,,Kilo Meters,Total sewer network length (km) maintained per year,all_fin_service_malawi,malawi,,City,year
+complaints,Access and Coverage,,Nos,Total complaints received monthly at city level,all_fin_service_malawi,malawi,,City,month
+resolved,Production and Billing,,NOs,Total complaints resolved monthly at city level,all_fin_service_malawi,malawi,,City,month
+blocks,Production and Billing,,Nos,Number of sewer blockages reported monthly,all_fin_service_malawi,malawi,,City,month
+sewer_billed,Production and Billing,,MWK,Total sewer billing per month (MWK),all_fin_service_malawi,malawi,,City,month
+sewer_revenue,Production and Billing,,MWK,Total sewer revenue collected per month (MWK),all_fin_service_malawi,malawi,,City,month
+opex,Production and Billing,,MWK,Monthly operational expenditure (MWK),all_fin_service_malawi,malawi,,City,month
+san_staff,Production and Billing,,Nos,Number of sanitation staff employed monthly,all_fin_service_malawi,malawi,,City,month
+w_staff,Production and Billing,,Nos,Number of water staff employed monthly,all_fin_service_malawi,malawi,,City,month
+propoor_popn,Access and Coverage,,%,Proportion of total population in pro-poor category,all_fin_service_malawi,malawi,,City,
+country,,,string,,all_nationalacc_malawi,malawi,,City,
+city,,,string,,all_nationalacc_malawi,malawi,,City,
+date,,,date,,all_nationalacc_malawi,malawi,,City,
+budget_allocated,Production and Billing,,MWK,total allocated budget_WASH,all_nationalacc_malawi,malawi,,City,
+san_allocation,Water Supply,,%,% sanitation allocation,all_nationalacc_malawi,malawi,,City,
+wat_allocation,Water Supply,,%,% water allocation,all_nationalacc_malawi,malawi,,City,
+staff_cost,Production and Billing,,MWK,staff cost - annual HR,all_nationalacc_malawi,malawi,,City,year
+water_resources,Access and Coverage,,,total renewable resources available,all_nationalacc_malawi,malawi,,City,
+trained_staff,Access and Coverage,,,trained staff,all_nationalacc_malawi,malawi,,City,
+staff_training_budget,Production and Billing,,MWK,budget allocated for staff management,all_nationalacc_malawi,malawi,,City,
+customer_id,,,string,Customer ID,billing_malawi.csv,malawi,,Country,
+date,Date/time,, Date format,Date,billing_malawi.csv,malawi,,Country,
+consumption_m3,Production and billing,,Cubic meters (m³),Monthly water consumption per customer,billing_malawi.csv,malawi,,Country,month
+billed,Production and billing,,MWK,Total billed amount per customer per month,billing_malawi.csv,malawi,,Country,month
+paid,Production and billing,,Boolean,Total paid amount per customer per month,billing_malawi.csv,malawi,,Country,month
+country,Production and billing,,string,Malawi,billing_malawi.csv,malawi,,Country,
+customer_id,Production and billing,,string,Customer ID,billing_lesotho,Lesotho,,Country,
+date,Date/time,, Date format,Date,billing_lesotho,Lesotho,,Country,
+consumption_m3,Production and billing,,Cubic meters (m³),Monthly water consumption per customer,billing_lesotho,Lesotho,,Country,
+billed,Production and billing,,Loti,Total billed amount per customer per month,billing_lesotho,Lesotho,,Country,
+paid,Production and billing,,Boolean,Total paid amount per customer per month,billing_lesotho,Lesotho,,Country,
+country,Production and billing,,string,Lesotho,billing_lesotho,Lesotho,,Country,
+country,,,string,,all_fin_service_lesotho,Lesotho,,City,
+city,,,string,,all_fin_service_lesotho,Lesotho,,City,
+date,,,date,,all_fin_service_lesotho,Lesotho,,City,
+sewer_billed,Production and billing ,,Currency,Total sewer billing per month ,all_fin_services_lesotho,Lesotho,,city,Month
+sewer_revenue,Production and billing ,,Currency,Total sewer revenue collected per month,all_fin_services_lesotho,Lesotho,,city,Month
+opex,Production and billing ,,Currency,Monthly operational expenditure ,all_fin_services_lesotho,Lesotho,,city,Month
+san_staff,Production and billing ,,Number,Number of sanitation staff employed monthly,all_fin_services_lesotho,Lesotho,,city,Month
+w_staff,Production and billing ,,Number,Number of water staff employed monthly,all_fin_services_lesotho,Lesotho,,city,Month
+budget_allocated,Production and Billing,,Currency,total allocated budget_WASH,all_nationalacc_lesotho,Lesotho,,city,year
+san_allocation,Production and Billing,,%,% sanitation budget allocation,all_nationalacc_lesotho,Lesotho,,city,year
+wat_allocation,Production and Billing,,%,% water allocation,all_nationalacc_lesotho,Lesotho,,city,year
+staff_cost,Production and Billing,,Currency,staff cost - annual HR,all_nationalacc_lesotho,Lesotho,,city,year
+water_resources,Access and Coverage,,Number,total renewable resources available,all_nationalacc_lesotho,Lesotho,,city,year
+trained_staff,Access and Coverage,,Number,trained staff,all_nationalacc_lesotho,Lesotho,,city,year
+complaint_resolution,Access and Coverage,,Time,complaint resolution time,all_nationalacc_lesotho,Lesotho,,city,year
+registered_wtps,Access and Coverage,,Number,registered water treatment plants,all_nationalacc_lesotho,Lesotho,,city,year
+inspected_wtps,Access and Coverage,,Number,inspected water treatment plants,all_nationalacc_lesotho,Lesotho,,city,year
+total_service_providers,Access and Coverage,,Number,private and public service providers,all_nationalacc_lesotho,Lesotho,,city,year
+licensed_service_providers,Access and Coverage,,Number,licensed service providers,all_nationalacc_lesotho,Lesotho,,city,year
+asset_health,Access and Coverage,,Number,asset health index,all_nationalacc_lesotho,Lesotho,,city,year
+staff_training_budget,Production and Billing,,Currency,budget allocated for staff management,all_nationalacc_lesotho,Lesotho,,city,year
+country,,,N/A (Categorical),Country,all_fin_service_uganda,Uganda,,country,
+city,,,N/A (Categorical),City,all_fin_service_uganda,Uganda,,city,
+date,,,,Date,all_fin_service_uganda,Uganda,,city,
+sewer_length,Access and Coverage ,,Kilometers (km),Total sewer network length (km) maintained per year,all_fin_service_uganda,Uganda,,city,year
+sewer_billed,Production and Billing,,Currency ( UGX),Total sewer billing per month (UGX),all_fin_service_uganda,Uganda,,city,month
+sewer_revenue,Production and Billing,,Currency ( UGX),Total sewer revenue collected per month (UGX),all_fin_service_uganda,Uganda,,city,month
+opex,Production and Billing,,Currency ( UGX),Monthly operational expenditure (UGX),all_fin_service_uganda,Uganda,,city,month
+san_staff,Access and Coverage ,,Count (number of people),Number of sanitation staff employed monthly,all_fin_service_uganda,Uganda,,city,month
+w_staff,Access and Coverage ,,Count (number of people),Number of water staff employed monthly,all_fin_service_uganda,Uganda,,city,month
+country,,,N/A (Categorical),Country,all_nationalacc_uganda,Uganda,,,
+city,,,N/A (Categorical),City,all_nationalacc_uganda,Uganda,,city,
+date,,,N/A (Temporal),Date,all_nationalacc_uganda,Uganda,,city,
+budget_allocated,Access and Coverage ,Production and Billing,Currency ( UGX),total allocated budget_WASH,all_nationalacc_uganda,Uganda,,city,
+san_allocation,Access and Coverage ,,Currency ( UGX),% sanitation allocation,all_nationalacc_uganda,Uganda,,city,
+wat_allocation,Access and Coverage ,,Currency ( UGX),% water allocation,all_nationalacc_uganda,Uganda,,city,
+staff_cost,Production and Billing,,Currency ( UGX),staff cost - annual HR,all_nationalacc_uganda,Uganda,,city,year
+water_resources,Water Quality ,,Cubic meters per year (m³/year),total renewable resources available,all_nationalacc_uganda,Uganda,,city,
+trained_staff,Access and Coverage ,,Count (number of people),trained staff,all_nationalacc_uganda,Uganda,,city,
+staff_training_budget,Production and Billing,,Currency ( UGX),budget allocated for staff management,all_nationalacc_uganda,Uganda,,city,
+date,,,,Date,billing_uganda,Uganda,,Country/ source??,
+source,Production and Billing,,N/A (Categorical),Extraction source,billing_uganda,Uganda,,,
+production_m3,Production and Billing,Access and Coverage ,Cubic meters (m³),Production volume,billing_uganda,Uganda,,,
+service_hours,Access and Coverage ,,Hours,Number of hours of service,billing_uganda,Uganda,,,
+country,,,N/A (Categorical),Country,billing_uganda,Uganda,,country,
