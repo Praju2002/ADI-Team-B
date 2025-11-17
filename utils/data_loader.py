@@ -89,7 +89,8 @@ def load_all_data():
     try:
         # Try loading from Excel first
         if os.path.exists('Raw_Data/Master_Data.xlsx'):
-            return {
+            # Load sheets into a dict first, then normalize
+            data = {
                 'all_fin_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_fin_service'),
                 'all_national': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_national'),
                 'billing': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='billing'),
@@ -99,11 +100,48 @@ def load_all_data():
                 'w_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_access'),
                 'w_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_service')
             }
+
+            # Normalize country casing and parse date-like columns across all dataframes
+            for key, df in data.items():
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                    # Normalize country column to Capitalized form (e.g., 'Cameroon')
+                    if 'country' in df.columns:
+                        try:
+                            df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                        except Exception:
+                            pass
+
+                    # Parse any date-like columns (columns containing 'date') to datetime
+                    date_cols = [c for c in df.columns if 'date' in str(c).lower()]
+                    for c in date_cols:
+                        try:
+                            df[c] = pd.to_datetime(df[c], errors='coerce')
+                        except Exception:
+                            pass
+
+            return data
         else:
             raise FileNotFoundError("Excel file not found, loading from CSV files")
     except:
-        # Load from CSV files
-        return load_data_from_csv()
+        # Load from CSV files and normalize the result
+        data = load_data_from_csv()
+
+        for key, df in data.items():
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                if 'country' in df.columns:
+                    try:
+                        df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                    except Exception:
+                        pass
+
+                date_cols = [c for c in df.columns if 'date' in str(c).lower()]
+                for c in date_cols:
+                    try:
+                        df[c] = pd.to_datetime(df[c], errors='coerce')
+                    except Exception:
+                        pass
+
+        return data
 
 
 def get_country_list(data_dict):

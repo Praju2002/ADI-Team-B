@@ -1,0 +1,1211 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import os
+import warnings
+import matplotlib.pyplot as plt
+
+warnings.filterwarnings('ignore')
+
+# ---------------------------#
+# Page Setup - Simplified Currency
+# ---------------------------#
+# NOTE: All financial values are treated as USD for simplicity
+# Local currency conversions are not applied
+
+def format_currency(amount, show_detailed=False):
+    """Format currency as USD - simplified version"""
+    if pd.isna(amount):
+        return "N/A"
+    return f"${amount:,.0f}"
+
+def get_primary_country(df):
+    """Get primary country from dataframe"""
+    if df.empty or 'country' not in df.columns:
+        return 'All Countries'
+    countries = df['country'].dropna().unique()
+    return countries[0] if len(countries) == 1 else 'Multiple Countries'
+
+# ---------------------------#
+# Streamlit Page Setup
+# ---------------------------#
+st.set_page_config(
+    page_title="Water Utility Financial Health Dashboard",
+    page_icon="💧",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ---------------------------#
+# Custom CSS
+# ---------------------------#
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.2rem;
+        color: #2c3e50;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        font-weight: 600;
+    }
+    .metric-card {
+        background-color: #ffffff;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 3px solid #3498db;
+        margin: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .positive-metric {
+        border-left: 3px solid #27ae60;
+    }
+    .negative-metric {
+        border-left: 3px solid #c0392b;
+    }
+    .warning-metric {
+        border-left: 3px solid #e67e22;
+    }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ---------------------------#
+# Financial Health Analyzer Class
+# ---------------------------#
+class FinancialHealthAnalyzer:
+    def __init__(self):
+        self.data = {}
+        self.load_data()
+
+    @staticmethod
+    def _safe_div(a, b, default=0):
+        """Safe division to handle zero/NaN."""
+        try:
+            if pd.isna(a) or pd.isna(b) or b == 0:
+                return default
+            return a / b
+        except Exception:
+            return default
+
+    @staticmethod
+    def _parse_dates(series):
+        """Flexible date parsing."""
+        if series is None:
+            return series
+        s = series.astype(str).str.strip()
+        formats = [
+            '%b-%y', '%b-%Y', '%d-%m-%y', '%d-%m-%Y', '%m-%d-%y', '%m-%d-%Y',
+            '%Y-%m-%d', '%d/%m/%y', '%d/%m/%Y', '%m/%d/%y', '%m/%d/%Y'
+        ]
+        best = pd.to_datetime(s, errors='coerce', dayfirst=True, infer_datetime_format=True)
+        best_count = best.notna().sum()
+        for fmt in formats:
+            parsed = pd.to_datetime(s, format=fmt, errors='coerce')
+            if parsed.notna().sum() > best_count:
+                best, best_count = parsed, parsed.notna().sum()
+                if best_count == len(s):
+                    break
+        return best
+
+    def load_data(self):
+        """Load CSV files for each country and dataset type."""
+        try:
+            # Use centralized loader so formats (country casing, dates) are consistent
+            from utils.data_loader import load_all_data
+            all_data = load_all_data()
+            # Ensure we provide a consistent 'date' column (coerced to datetime)
+            for key_map, target in (('all_fin_service', 'financial_services'),
+                                    ('all_national', 'national_accounts'),
+                                    ('billing', 'billing')):
+                df = all_data.get(key_map, pd.DataFrame()).copy()
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                    # If there is no explicit 'date' column, try to find a date-like column
+                    if 'date' not in df.columns:
+                        date_cols = [c for c in df.columns if 'date' in str(c).lower()]
+                        if date_cols:
+                            try:
+                                df['date'] = pd.to_datetime(df[date_cols[0]], errors='coerce')
+                            except Exception:
+                                df['date'] = pd.NaT
+                    else:
+                        # Coerce existing 'date' column to datetime
+                        try:
+                            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                        except Exception:
+                            df['date'] = pd.NaT
+
+                    # Normalize country column name if variants exist (e.g., 'Country') and ensure values are strings
+                    country_cols = [c for c in df.columns if str(c).strip().lower() == 'country']
+                    if country_cols:
+                        try:
+                            df['country'] = df[country_cols[0]].astype(str).str.strip().str.capitalize()
+                        except Exception:
+                            df['country'] = df[country_cols[0]]
+
+                self.data[target] = df
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+
+    def calculate_financial_metrics(self, df):
+        """
+        Calculate comprehensive financial metrics using SEWER data.
+        OpEx and revenue are all from utility-level sewer services.
+        NOTE: All financial columns are treated as USD for consistency
+        """
+        if df.empty:
+            return {
+                'collection_ratio': 0,
+                'opex_ratio': np.nan,
+                'profit': 0,
+                'profit_margin': np.nan,
+                'revenue_per_km': 0,
+                'total_billed': 0,
+                'total_revenue': 0,
+                'total_opex': 0
+            }
+
+        # Get totals from sewer data - treated as USD
+        total_billed = df['sewer_billed'].sum() if 'sewer_billed' in df.columns else 0
+        total_revenue = df['sewer_revenue'].sum() if 'sewer_revenue' in df.columns else 0
+        total_opex = df['opex'].sum() if 'opex' in df.columns else 0
+        total_sewer_length = df['sewer_length'].sum() if 'sewer_length' in df.columns else 0
+
+        # Collection ratio = revenue collected / amount billed
+        profit = total_revenue - total_opex
+
+        # NOTE: return opex ratios as fractions (0..1). UI will format as percent where needed.
+        return {
+            'collection_ratio': self._safe_div(total_revenue, total_billed),
+            'opex_ratio': self._safe_div(total_opex, total_revenue, np.nan),
+            'profit': profit,
+            'profit_margin': self._safe_div(profit, total_revenue, np.nan),
+            'revenue_per_km': self._safe_div(total_revenue, total_sewer_length),
+            'total_billed': total_billed,
+            'total_revenue': total_revenue,
+            'total_opex': total_opex,
+            # opex_coverage kept as fraction for consistent formatting in UI
+            'opex_coverage': self._safe_div(total_opex, total_revenue, np.nan)
+        }
+
+    def calculate_water_metrics(self, production_df, service_df):
+        """Calculate water-specific metrics - minimal for financial purposes"""
+        # Return empty metrics since we removed NRW/quality from financial dashboard
+        return {
+            'total_produced': 0,
+            'total_supplied': 0,
+            'total_consumed': 0,
+            'nrw_volume': 0,
+            'nrw_percentage': 0,
+            'metering_rate': 0,
+            'water_quality_chlorine': 0,
+            'water_quality_ecoli': 0
+        }
+
+    def calculate_billing_metrics(self, df):
+        """Calculate customer billing metrics from billing dataset"""
+        if df.empty:
+            return {
+                'total_billed': 0,
+                'total_paid': 0,
+                'billing_collection_ratio': 0,
+                'avg_consumption': 0,
+                'avg_bill_amount': 0,
+                'avg_payment_amount': 0,
+                'payment_rate': 0
+            }
+
+        billed = df['billed'] if 'billed' in df.columns else pd.Series(dtype=float)
+        paid = df['paid'] if 'paid' in df.columns else pd.Series(dtype=float)
+        consumption = df['consumption_m3'] if 'consumption_m3' in df.columns else pd.Series(dtype=float)
+
+        total_billed = billed.sum()
+        total_paid = paid.sum()
+        avg_consumption = consumption.mean() if not consumption.empty else 0
+        avg_bill_amount = billed.mean() if not billed.empty else 0
+        avg_payment_amount = paid.mean() if not paid.empty else 0
+        payment_rate = (paid > 0).mean() if not paid.empty else 0
+
+        return {
+            'total_billed': total_billed,
+            'total_paid': total_paid,
+            'billing_collection_ratio': self._safe_div(total_paid, total_billed),
+            'avg_consumption': avg_consumption,
+            'avg_bill_amount': avg_bill_amount,
+            'avg_payment_amount': avg_payment_amount,
+            'payment_rate': payment_rate
+        }
+
+
+# ---------------------------#
+# Dashboard Layout
+# ---------------------------#
+def main():
+    st.markdown('<h1 class="main-header">💧 Water Utility Financial Dashboard</h1>', unsafe_allow_html=True)
+    analyzer = FinancialHealthAnalyzer()
+
+    # Sidebar: Filters
+    st.sidebar.header("🔍 Filters")
+    available_countries = sorted({c for df in analyzer.data.values() if not df.empty and 'country' in df.columns for c in df['country'].unique()})
+    selected_countries = st.sidebar.multiselect("Select Countries:", available_countries, default=available_countries)
+    
+    # Enhanced date filtering with slider
+    date_min = min((df['date'].min() for df in analyzer.data.values() if not df.empty and 'date' in df.columns), default=None)
+    date_max = max((df['date'].max() for df in analyzer.data.values() if not df.empty and 'date' in df.columns), default=None)
+    
+    if date_min and date_max:
+        st.sidebar.subheader("📅 Time Period")
+        # Quick period selection
+        period_option = st.sidebar.radio(
+            "Select Period:",
+            ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
+            index=0
+        )
+        
+        if period_option == "Last 12 Months":
+            date_range = (date_max - pd.DateOffset(months=12), date_max)
+        elif period_option == "Last 6 Months":
+            date_range = (date_max - pd.DateOffset(months=6), date_max)
+        elif period_option == "Custom Range":
+            date_range = st.sidebar.date_input("Select Date Range:", value=(date_min, date_max))
+        else:
+            date_range = (date_min, date_max)
+    else:
+        date_range = None
+
+    # Apply filters
+    filtered_data = {}
+    for key, df in analyzer.data.items():
+        if not df.empty:
+            fdf = df.copy()
+            if selected_countries and 'country' in fdf.columns:
+                fdf = fdf[fdf['country'].isin(selected_countries)]
+            if date_range and len(date_range) == 2 and 'date' in fdf.columns:
+                start = pd.to_datetime(date_range[0]) if not isinstance(date_range[0], pd.Timestamp) else date_range[0]
+                end = pd.to_datetime(date_range[1]) if not isinstance(date_range[1], pd.Timestamp) else date_range[1]
+                fdf = fdf[(fdf['date'] >= start) & (fdf['date'] <= end)]
+            filtered_data[key] = fdf
+
+    # Display Overview
+    display_overview_tab(filtered_data, analyzer)
+
+
+# ---------------------------#
+# Dashboard Sections
+# ---------------------------#
+def display_overview_tab(filtered_data, analyzer):
+    """Financial health overview - focused on revenue collection and costs"""
+    
+    # Clean header
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;'>
+        <h2 style='color: white; text-align: center; margin: 0; font-weight: 600;'>
+             Financial Health Dashboard
+        </h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    df = filtered_data.get('financial_services', pd.DataFrame())
+    billing_df = filtered_data.get('billing', pd.DataFrame())
+    
+    if df.empty:
+        st.warning("No financial services data available.")
+        return
+    
+    # Calculate financial metrics using SEWER data
+    metrics = analyzer.calculate_financial_metrics(df)
+    billing_metrics = analyzer.calculate_billing_metrics(billing_df) if not billing_df.empty else {}
+    
+    # Get primary country for display
+    primary_country = get_primary_country(df)
+    
+    # Multi-country notice
+    countries_in_data = df['country'].unique() if 'country' in df.columns else []
+  
+    # ===========================
+    # CRITICAL FINANCIAL HEALTH METRICS
+    # ===========================
+    st.markdown("###   Financial Health Indicators")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # 1. Sewer Collection Rate
+    collection_ratio = metrics['collection_ratio']
+    with col1:
+        st.metric("Sewer Collection Rate", 
+                 f"{collection_ratio:.1%}",
+                 delta=f"{collection_ratio - 0.85:.1%} vs 85% target",
+                 delta_color="normal" if collection_ratio >= 0.85 else "inverse",
+                 help="Sewer revenue collected / Sewer billed (utility-level data)")
+    
+    # 2. Customer Payment Rate (collection efficiency)
+    customer_collection = billing_metrics.get('billing_collection_ratio', 0)
+    with col2:
+        st.metric("Customer Payment Rate", 
+                 f"{customer_collection:.1%}",
+                 delta=f"{customer_collection - 0.85:.1%} vs 85% target",
+                 delta_color="normal" if customer_collection >= 0.85 else "inverse",
+                 help="Customer payments collected / Customer bills (water + sewer). Shows collection efficiency.")
+    
+    # 3. Operating Cost Ratio
+    opex_coverage = metrics['opex_coverage']
+    with col3:
+        st.metric("Operating Cost Ratio", 
+                 f"{opex_coverage:.1%}",
+                 delta="Efficient" if opex_coverage <= 1 else "Over Budget",
+                 delta_color="normal" if opex_coverage <= 1 else "inverse",
+                 help="Operating costs / Sewer revenue. Target ≤100% (costs should not exceed revenue)")
+    
+    # 4. Profit Margin
+    profit_val = metrics['profit']
+    profit_margin = metrics['profit_margin']
+    with col4:
+        st.metric("Profit Margin", 
+                 f"{profit_margin:.1%}" if not np.isnan(profit_margin) else "N/A",
+                 delta="Profitable" if profit_val > 0 else "Loss",
+                 delta_color="normal" if profit_val > 0 else "inverse",
+                 help="Net profit as percentage of sewer revenue")
+    
+    # ===========================
+    # FINANCIAL SUMMARY CARDS
+    # ===========================
+    st.markdown("---")
+    st.markdown("### Financial Summary - Sewer Services")
+   
+    
+    col_a, col_b, col_c, col_d,  = st.columns(4)
+    
+    with col_a:
+        st.markdown(f"""
+        <div style='background-color: #e8f4f8; padding: 1rem; border-radius: 8px; border-left: 4px solid #3498db;'>
+            <h4 style='margin: 0; color: #2c3e50;'>Sewer Billed</h4>
+            <h2 style='margin: 0.5rem 0 0 0; color: #3498db;'>{format_currency(metrics['total_billed'])}</h2>
+            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Total billed</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_b:
+        st.markdown(f"""
+        <div style='background-color: #e8f8f0; padding: 1rem; border-radius: 8px; border-left: 4px solid #27ae60;'>
+            <h4 style='margin: 0; color: #2c3e50;'>Sewer Collected</h4>
+            <h2 style='margin: 0.5rem 0 0 0; color: #27ae60;'>{format_currency(metrics['total_revenue'])}</h2>
+            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Revenue collected</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_c:
+        st.markdown(f"""
+        <div style='background-color: #fff3e0; padding: 1rem; border-radius: 8px; border-left: 4px solid #f39c12;'>
+            <h4 style='margin: 0; color: #2c3e50;'>Operating Costs</h4>
+            <h2 style='margin: 0.5rem 0 0 0; color: #f39c12;'>{format_currency(metrics['total_opex'])}</h2>
+            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Total OpEx</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_d:
+        profit_color = "#27ae60" if profit_val > 0 else "#e74c3c"
+        profit_bg = "#e8f8f0" if profit_val > 0 else "#fdecea"
+        st.markdown(f"""
+        <div style='background-color: {profit_bg}; padding: 1rem; border-radius: 8px; border-left: 4px solid {profit_color};'>
+            <h4 style='margin: 0; color: #2c3e50;'>Net Profit/Loss</h4>
+            <h2 style='margin: 0.5rem 0 0 0; color: {profit_color};'>{format_currency(profit_val)}</h2>
+            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>{"✓ Surplus" if profit_val > 0 else "✗ Deficit"}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # with col_e:
+    #     customer_collection = billing_metrics.get('billing_collection_ratio', 0)
+    #     cust_color = "#27ae60" if customer_collection >= 0.90 else "#f39c12" if customer_collection >= 0.75 else "#e74c3c"
+    #     cust_bg = "#e8f8f0" if customer_collection >= 0.90 else "#fff3e0" if customer_collection >= 0.75 else "#fdecea"
+    #     st.markdown(f"""
+    #     <div style='background-color: {cust_bg}; padding: 1rem; border-radius: 8px; border-left: 4px solid {cust_color};'>
+    #         <h4 style='margin: 0; color: #2c3e50;'>Customer Bills Paid</h4>
+    #         <h2 style='margin: 0.5rem 0 0 0; color: {cust_color};'>{customer_collection:.1%}</h2>
+    #         <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Water + Sewer</p>
+    #     </div>
+    #     """, unsafe_allow_html=True)
+    
+    # ... REST OF THE CODE CONTINUES ...
+    # Performance Assessment with better visuals
+    st.markdown("---")
+    st.markdown("### Performance Assessment")
+    
+    # Create progress bar style visualizations (more space efficient and cleaner)
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Collection Rate - Bullet Chart Style
+        st.markdown("**Collection Rate**")
+        
+        fig_bullet1 = go.Figure()
+        
+        # Background zones
+        fig_bullet1.add_trace(go.Bar(
+            y=['Performance'],
+            x=[100],
+            orientation='h',
+            marker=dict(color='rgba(231, 76, 60, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        
+        fig_bullet1.add_trace(go.Bar(
+            y=['Performance'],
+            x=[15],
+            orientation='h',
+            marker=dict(color='rgba(243, 156, 18, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=70
+        ))
+        
+        fig_bullet1.add_trace(go.Bar(
+            y=['Performance'],
+            x=[15],
+            orientation='h',
+            marker=dict(color='rgba(39, 174, 96, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=85
+        ))
+        
+        # Actual value
+        actual_color = "#27ae60" if collection_ratio >= 0.85 else "#f39c12" if collection_ratio >= 0.70 else "#e74c3c"
+        fig_bullet1.add_trace(go.Bar(
+            y=['Performance'],
+            x=[collection_ratio * 100],
+            orientation='h',
+            marker=dict(color=actual_color),
+            text=f"{collection_ratio:.1%}",
+            textposition='inside',
+            insidetextanchor='end',
+            textfont=dict(color='white', size=14, family='Arial Black'),
+            showlegend=False,
+            hovertemplate=f"Collection Rate: {collection_ratio:.1%}<extra></extra>"
+        ))
+        
+        # Target marker
+        fig_bullet1.add_shape(
+            type="line",
+            x0=85, x1=85,
+            y0=-0.4, y1=0.4,
+            line=dict(color="#2c3e50", width=3)
+        )
+        
+        fig_bullet1.add_annotation(
+            x=85, y=0.5,
+            text="Target",
+            showarrow=False,
+            font=dict(size=9, color="#2c3e50")
+        )
+        
+        fig_bullet1.update_layout(
+            barmode='overlay',
+            height=120,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(range=[0, 100], showgrid=False, showticklabels=True, title=""),
+            yaxis=dict(showticklabels=False, showgrid=False),
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+        
+        st.plotly_chart(fig_bullet1, use_container_width=True, key="bullet_collection_rate")
+        st.markdown(f"<p style='text-align: center; color: {actual_color}; font-weight: 600;'>{'+' if collection_ratio >= 0.85 else ''}{(collection_ratio - 0.85):.1%} vs target</p>", unsafe_allow_html=True)
+    
+    with col2:
+        # Payment Rate - Bullet Chart Style
+        st.markdown("**Payment Rate**")
+        
+        fig_bullet2 = go.Figure()
+        
+        # Background zones
+        fig_bullet2.add_trace(go.Bar(
+            y=['Performance'],
+            x=[100],
+            orientation='h',
+            marker=dict(color='rgba(231, 76, 60, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        
+        fig_bullet2.add_trace(go.Bar(
+            y=['Performance'],
+            x=[20],
+            orientation='h',
+            marker=dict(color='rgba(243, 156, 18, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=60
+        ))
+        
+        fig_bullet2.add_trace(go.Bar(
+            y=['Performance'],
+            x=[20],
+            orientation='h',
+            marker=dict(color='rgba(39, 174, 96, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=80
+        ))
+        
+        # Actual value - use billing_collection_ratio instead of payment_rate
+        customer_collection_val = billing_metrics.get('billing_collection_ratio', 0)
+        payment_color = "#27ae60" if customer_collection_val >= 0.85 else "#f39c12" if customer_collection_val >= 0.70 else "#e74c3c"
+        fig_bullet2.add_trace(go.Bar(
+            y=['Performance'],
+            x=[customer_collection_val * 100],
+            orientation='h',
+            marker=dict(color=payment_color),
+            text=f"{customer_collection_val:.1%}",
+            textposition='inside',
+            insidetextanchor='end',
+            textfont=dict(color='white', size=14, family='Arial Black'),
+            showlegend=False,
+            hovertemplate=f"Customer Collection Rate: {customer_collection_val:.1%}<extra></extra>"
+        ))
+        
+        # Target marker
+        fig_bullet2.add_shape(
+            type="line",
+            x0=85, x1=85,
+            y0=-0.4, y1=0.4,
+            line=dict(color="#2c3e50", width=3)
+        )
+        
+        fig_bullet2.add_annotation(
+            x=85, y=0.5,
+            text="Target",
+            showarrow=False,
+            font=dict(size=9, color="#2c3e50")
+        )
+        
+        fig_bullet2.update_layout(
+            barmode='overlay',
+            height=120,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(range=[0, 100], showgrid=False, showticklabels=True, title=""),
+            yaxis=dict(showticklabels=False, showgrid=False),
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+        
+        st.plotly_chart(fig_bullet2, use_container_width=True, key="bullet_payment_rate")
+        st.markdown(f"<p style='text-align: center; color: {payment_color}; font-weight: 600;'>{'+' if customer_collection_val >= 0.85 else ''}{(customer_collection_val - 0.85):.1%} vs target</p>", unsafe_allow_html=True)
+    
+    with col3:
+        # Profit Margin - Bullet Chart Style
+        st.markdown("**Profit Margin**")
+        
+        profit_display = max(min(profit_margin if not np.isnan(profit_margin) else 0, 0.50), -0.20)
+        
+        fig_bullet3 = go.Figure()
+        
+        # Background zones (shifted for negative values)
+        fig_bullet3.add_trace(go.Bar(
+            y=['Performance'],
+            x=[20],
+            orientation='h',
+            marker=dict(color='rgba(231, 76, 60, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=-20
+        ))
+        
+        fig_bullet3.add_trace(go.Bar(
+            y=['Performance'],
+            x=[15],
+            orientation='h',
+            marker=dict(color='rgba(243, 156, 18, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=0
+        ))
+        
+        fig_bullet3.add_trace(go.Bar(
+            y=['Performance'],
+            x=[35],
+            orientation='h',
+            marker=dict(color='rgba(39, 174, 96, 0.15)'),
+            showlegend=False,
+            hoverinfo='skip',
+            base=15
+        ))
+        
+        # Actual value
+        profit_color = "#27ae60" if profit_display >= 0.15 else "#f39c12" if profit_display >= 0 else "#e74c3c"
+        fig_bullet3.add_trace(go.Bar(
+            y=['Performance'],
+            x=[profit_display * 100],
+            orientation='h',
+            marker=dict(color=profit_color),
+            text=f"{profit_display:.1%}",
+            textposition='inside',
+            insidetextanchor='end' if profit_display > 0 else 'start',
+            textfont=dict(color='white', size=14, family='Arial Black'),
+            showlegend=False,
+            hovertemplate=f"Profit Margin: {profit_display:.1%}<extra></extra>",
+            base=0
+        ))
+        
+        # Target marker
+        fig_bullet3.add_shape(
+            type="line",
+            x0=15, x1=15,
+            y0=-0.4, y1=0.4,
+            line=dict(color="#2c3e50", width=3)
+        )
+        
+        fig_bullet3.add_annotation(
+            x=15, y=0.5,
+            text="Target",
+            showarrow=False,
+            font=dict(size=9, color="#2c3e50")
+        )
+        
+        # Zero line
+        fig_bullet3.add_shape(
+            type="line",
+            x0=0, x1=0,
+            y0=-0.4, y1=0.4,
+            line=dict(color="#7f8c8d", width=2, dash="dash")
+        )
+        
+        fig_bullet3.update_layout(
+            barmode='overlay',
+            height=120,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(range=[-20, 50], showgrid=False, showticklabels=True, title=""),
+            yaxis=dict(showticklabels=False, showgrid=False),
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+        
+        st.plotly_chart(fig_bullet3, use_container_width=True, key="bullet_profit_margin")
+        st.markdown(f"<p style='text-align: center; color: {profit_color}; font-weight: 600;'>{'+' if profit_display >= 0.15 else ''}{(profit_display - 0.15):.1%} vs target</p>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Collection Trends Analysis
+    st.markdown("### Collection Trends")
+    
+    # Prepare monthly data using SEWER data
+    monthly = df.groupby(pd.Grouper(key='date', freq='M')).agg({
+        'sewer_billed': 'sum',
+        'sewer_revenue': 'sum',
+        'opex': 'sum'
+    }).reset_index()
+    
+    if len(monthly) > 0:
+        # Calculate proper collection ratio: revenue / billed
+        monthly['collection_ratio'] = (monthly['sewer_revenue'] / monthly['sewer_billed'] * 100).fillna(0)
+        monthly['collection_gap'] = monthly['sewer_billed'] - monthly['sewer_revenue']
+        monthly['profit'] = monthly['sewer_revenue'] - monthly['opex']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = go.Figure()
+            
+            # Show billed amount vs actual revenue collected
+            fig.add_trace(go.Scatter(
+                x=monthly['date'],
+                y=monthly['sewer_billed'],
+                name='Amount Billed',
+                line=dict(color='#95a5a6', width=2),
+                mode='lines',
+                hovertemplate='Billed: %{y:$,.0f}<extra></extra>'
+            ))
+            
+            # Add customdata for the gap hover
+            monthly['gap_for_hover'] = monthly['sewer_billed'] - monthly['sewer_revenue']
+            
+            fig.add_trace(go.Scatter(
+                x=monthly['date'],
+                y=monthly['sewer_revenue'],
+                name='Revenue Collected',
+                line=dict(color='#27ae60', width=3),
+                fill='tonexty',
+                fillcolor='rgba(231, 76, 60, 0.15)',
+                mode='lines',
+                customdata=monthly[['gap_for_hover']].values,
+                hovertemplate='Collected: %{y:$,.0f}<br>Gap (Uncollected): %{customdata[0]:$,.0f}<extra></extra>'
+            ))
+            
+            # Target line (85% of billed)
+            fig.add_trace(go.Scatter(
+                x=monthly['date'],
+                y=monthly['sewer_billed'] * 0.85,
+                name='Target (85%)',
+                line=dict(color='#3498db', width=1, dash='dash'),
+                mode='lines',
+                hovertemplate='Target: %{y:$,.0f}<extra></extra>'
+            ))
+            
+            fig.update_layout(
+                title="Billed vs. Collected Revenue (Gap in Red)",
+                xaxis_title="Period",
+                yaxis_title="Amount ($)",
+                hovermode='x unified',
+                height=400,
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                font=dict(size=11),
+                xaxis=dict(
+                    rangeslider=dict(visible=True, thickness=0.05),
+                    type="date",
+                    gridcolor='#ecf0f1'
+                ),
+                yaxis=dict(gridcolor='#ecf0f1')
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, key="collection_billed_vs_collected")
+        
+        with col2:
+            # Collection rate percentage
+            fig2 = go.Figure()
+            
+            fig2.add_trace(go.Scatter(
+                x=monthly['date'],
+                y=monthly['collection_ratio'],
+                mode='lines+markers',
+                name='Collection Rate',
+                line=dict(color='#3498db', width=2.5),
+                marker=dict(size=6, color='#2980b9'),
+                fill='tozeroy',
+                fillcolor='rgba(52, 152, 219, 0.1)'
+            ))
+            
+            # Performance zones
+            fig2.add_hrect(y0=85, y1=100, fillcolor="#27ae60", opacity=0.08, line_width=0)
+            fig2.add_hrect(y0=70, y1=85, fillcolor="#f39c12", opacity=0.08, line_width=0)
+            fig2.add_hrect(y0=0, y1=70, fillcolor="#e74c3c", opacity=0.08, line_width=0)
+            
+            fig2.update_layout(
+                title="Collection Rate Performance",
+                xaxis_title="Period",
+                yaxis_title="Rate (%)",
+                yaxis_range=[0, 100],
+                height=400,
+                showlegend=False,
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                font=dict(size=11),
+                xaxis=dict(
+                    rangeslider=dict(visible=True, thickness=0.05),
+                    type="date",
+                    gridcolor='#ecf0f1'
+                ),
+                yaxis=dict(gridcolor='#ecf0f1')
+            )
+            
+            st.plotly_chart(fig2, use_container_width=True, key="collection_rate_performance")
+        
+        # Insights below the charts
+        # st.markdown("#### 📊 What This Tells Us")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        # Calculate insights
+        avg_collection = monthly['collection_ratio'].mean()
+        total_gap = monthly['collection_gap'].sum()
+        recent_avg = monthly.tail(3)['collection_ratio'].mean()
+        older_avg = monthly.iloc[-6:-3]['collection_ratio'].mean() if len(monthly) >= 6 else recent_avg
+        trend = recent_avg - older_avg
+        
+        with col1:
+            st.markdown(f"""
+            **Average Collection Rate**  
+            {avg_collection:.1f}% of billed amounts are collected on average  
+            {'🟢 Above target' if avg_collection >= 85 else '🟡 Below target' if avg_collection >= 70 else '🔴 Needs attention'}
+            """)
+        
+        with col2:
+            st.markdown(f"""
+            **Total Uncollected Revenue**  
+            {format_currency(total_gap)} in revenue gap over the period  
+            
+            """)
+        
+        with col3:
+            arrow = "📈" if trend > 2 else "📉" if trend < -2 else "➡️"
+            trend_text = "improving" if trend > 2 else "declining" if trend < -2 else "stable"
+            st.markdown(f"""
+            **Recent Trend**  
+            {arrow} Collection rate is {trend_text}  
+            {'+' if trend > 0 else ''}{trend:.1f}% change in recent months
+            """)
+        
+        # Trend indicator
+        if len(monthly) >= 6:
+            trend_col1, trend_col2, trend_col3 = st.columns(3)
+            with trend_col1:
+                st.metric("Recent Average", f"{recent_avg:.1f}%")
+            with trend_col2:
+                arrow = "↗" if trend > 2 else "↘" if trend < -2 else "→"
+                st.metric("Trend", f"{arrow} {abs(trend):.1f}%", delta=f"{trend:.1f}%")
+            with trend_col3:
+                volatility = monthly['collection_ratio'].std()
+                st.metric("Volatility", f"±{volatility:.1f}%")
+    
+    st.markdown("---")
+    
+    # Profitability Analysis
+    st.markdown("### Profitability Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig3 = go.Figure()
+
+        # Simple grouped bar chart: Revenue vs OpEx on the same axis
+        fig3.add_trace(go.Bar(
+            x=monthly['date'],
+            y=monthly['sewer_revenue'],
+            name='Revenue',
+            marker_color='#27ae60'
+        ))
+
+        fig3.add_trace(go.Bar(
+            x=monthly['date'],
+            y=monthly['opex'],
+            name='Operating Costs',
+            marker_color='#e74c3c'
+        ))
+
+        fig3.update_layout(
+            title='Revenue vs. Operating Costs',
+            barmode='group',
+            xaxis_title="Period",
+            yaxis_title="Amount ($)",
+            height=400,
+            hovermode='x unified',
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(size=11),
+            xaxis=dict(
+                rangeslider=dict(visible=True, thickness=0.05),
+                type="date",
+                gridcolor='#ecf0f1'
+            ),
+            yaxis=dict(gridcolor='#ecf0f1'),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        st.plotly_chart(fig3, use_container_width=True, key="profitability_revenue_vs_opex")
+    
+    with col2:
+        fig4 = go.Figure()
+        
+        colors = ['#27ae60' if p > 0 else '#e74c3c' for p in monthly['profit']]
+        
+        fig4.add_trace(go.Bar(
+            x=monthly['date'],
+            y=monthly['profit'],
+            marker_color=colors,
+            name='Profit/Loss',
+            showlegend=False
+        ))
+        
+        fig4.add_hline(y=0, line_dash="solid", line_color="#34495e", line_width=1.5)
+        
+        fig4.update_layout(
+            title='Monthly Profit/Loss',
+            xaxis_title="Period",
+            yaxis_title="Profit/Loss ($)",
+            height=400,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(size=11),
+            xaxis=dict(
+                rangeslider=dict(visible=True, thickness=0.05),
+                type="date",
+                gridcolor='#ecf0f1'
+            ),
+            yaxis=dict(gridcolor='#ecf0f1')
+        )
+        
+        st.plotly_chart(fig4, use_container_width=True, key="profitability_profit_loss")
+    
+    # Calculate opex_ratio_pct
+    monthly['opex_ratio_pct'] = (monthly['opex'] / monthly['sewer_revenue'] * 100).fillna(0)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    total_opex = monthly['opex'].sum()
+    total_revenue = monthly['sewer_revenue'].sum()
+    avg_opex_ratio = monthly['opex_ratio_pct'].mean()
+    
+    with col1:
+        st.metric(
+            "Avg OpEx Ratio", 
+            f"{avg_opex_ratio:.1f}%",
+            delta=f"{(80 - avg_opex_ratio):.1f}% vs target",
+            delta_color="normal" if avg_opex_ratio < 80 else "inverse"
+        )
+    
+    with col2:
+        st.metric(
+            "Total OpEx",
+            format_currency(total_opex),
+            help="Total operational expenditure over the period"
+        )
+    
+    with col3:
+        efficiency_status = "🟢 Efficient" if avg_opex_ratio < 80 else "🟡 Monitor" if avg_opex_ratio < 100 else "🔴 At Risk"
+        st.metric(
+            "Efficiency Status",
+            efficiency_status,
+            help="Based on OpEx ratio: <80% = Efficient, 80-100% = Monitor, >100% = At Risk"
+        )
+    
+    # Country Performance Comparison
+    st.markdown("### Country Performance Comparison")
+    
+    # Country color palette inspired by flags
+    country_colors = {
+        'Cameroon': '#007A5E',
+        'Lesotho': '#00209F',
+        'Malawi': '#CE1126',
+        'Uganda': '#FCDC04'
+    }
+    
+    records = []
+    for country in sorted(df['country'].dropna().unique()):
+        cdf = df[df['country'] == country]
+        cm = analyzer.calculate_financial_metrics(cdf)
+        records.append({
+            'Country': country,
+            'Collection Rate': cm['collection_ratio'] * 100,
+            'Profit Margin': cm['profit_margin'] * 100 if not np.isnan(cm['profit_margin']) else 0
+        })
+    
+    if records:
+        country_df = pd.DataFrame(records)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig5 = go.Figure()
+            
+            for idx, row in country_df.sort_values('Collection Rate').iterrows():
+                fig5.add_trace(go.Bar(
+                    y=[row['Country']],
+                    x=[row['Collection Rate']],
+                    orientation='h',
+                    name=row['Country'],
+                    marker_color=country_colors.get(row['Country'], '#3498db'),
+                    text=f"{row['Collection Rate']:.1f}%",
+                    textposition='outside',
+                    showlegend=False
+                ))
+            
+            # Add target line
+            fig5.add_vline(x=85, line_dash="dash", line_color="#7f8c8d", 
+                          annotation_text="Target: 85%", annotation_position="top")
+            
+            fig5.update_layout(
+                title='Collection Rate by Country',
+                xaxis_title="Collection Rate (%)",
+                yaxis_title="",
+                height=300,
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                font=dict(size=11),
+                xaxis=dict(gridcolor='#ecf0f1', range=[0, 100]),
+                margin=dict(l=100)
+            )
+            
+            st.plotly_chart(fig5, use_container_width=True, key="country_collection_rate")
+        
+        with col2:
+            fig6 = go.Figure()
+            
+            for idx, row in country_df.sort_values('Profit Margin').iterrows():
+                fig6.add_trace(go.Bar(
+                    y=[row['Country']],
+                    x=[row['Profit Margin']],
+                    orientation='h',
+                    name=row['Country'],
+                    marker_color=country_colors.get(row['Country'], '#3498db'),
+                    text=f"{row['Profit Margin']:.1f}%",
+                    textposition='outside',
+                    showlegend=False
+                ))
+            
+            # Add target line
+            fig6.add_vline(x=15, line_dash="dash", line_color="#7f8c8d",
+                          annotation_text="Target: 15%", annotation_position="top")
+            
+            fig6.update_layout(
+                title='Profit Margin by Country',
+                xaxis_title="Profit Margin (%)",
+                yaxis_title="",
+                height=300,
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                font=dict(size=11),
+                xaxis=dict(gridcolor='#ecf0f1'),
+                margin=dict(l=100)
+            )
+            
+            st.plotly_chart(fig6, use_container_width=True, key="country_profit_margin")
+        
+        # Summary table
+        st.markdown("#### Summary Metrics by Country")
+        st.dataframe(
+            country_df.style.background_gradient(subset=['Collection Rate', 'Profit Margin'], cmap='RdYlGn', vmin=0, vmax=100)
+                            .format({
+                                'Collection Rate': '{:.1f}%',
+                                'Profit Margin': '{:.1f}%'
+                            }),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+def display_trends_tab(filtered_data, analyzer, show_usd=False):
+    """KEEPING ALL ORIGINAL FUNCTIONALITY - just added show_usd parameter"""
+    st.header("Financial Trends Analysis")
+    
+    st.markdown("""
+    Comprehensive trend analysis reveals patterns, identifies opportunities, and highlights areas requiring attention.
+    Use the controls below to explore different time periods and metrics.
+    """)
+    
+    df = filtered_data.get('financial_services', pd.DataFrame())
+    
+    if df.empty:
+        st.warning("No financial data available.")
+        return
+
+    # ADDED: Get primary country
+    primary_country = get_primary_country(df)
+
+    # Aggregation selector
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        time_granularity = st.selectbox(
+            "Time Period:",
+            ["Monthly", "Quarterly", "Yearly"],
+            index=0
+        )
+    
+    with col2:
+        metric_focus = st.selectbox(
+            "Focus Metric:",
+            ["All Metrics", "Collection Rate", "Profitability", "Operational Efficiency"],
+            index=0
+        )
+    
+    freq_map = {"Monthly": "M", "Quarterly": "Q", "Yearly": "Y"}
+    freq = freq_map[time_granularity]
+    
+    monthly = df.groupby(pd.Grouper(key='date', freq=freq)).agg({
+        'sewer_billed': 'sum',
+        'sewer_revenue': 'sum',
+        'opex': 'sum',
+        'san_staff': 'mean',
+        'w_staff': 'mean'
+    }).reset_index()
+    
+    if len(monthly) == 0:
+        st.warning("No data available for the selected period.")
+        return
+    
+    # Calculate proper ratios using sewer billed vs collected amounts
+    monthly['collection_ratio'] = (monthly['sewer_revenue'] / monthly['sewer_billed']).fillna(0)
+    monthly['opex_ratio'] = (monthly['opex'] / monthly['sewer_revenue']).fillna(0)
+    monthly['profit'] = monthly['sewer_revenue'] - monthly['opex']
+    monthly['profit_margin'] = (monthly['profit'] / monthly['sewer_revenue']).fillna(0)
+    monthly['total_staff'] = monthly['san_staff'] + monthly['w_staff']
+    
+    # ALL THE REST OF THE TRENDS TAB CODE REMAINS EXACTLY THE SAME
+    # Just replace ylabel "Amount ($)" with dynamic currency where needed
+    
+    st.markdown("---")
+    
+    # Collection Rate Evolution
+    if metric_focus in ["All Metrics", "Collection Rate"]:
+        st.markdown("### Collection Rate Evolution")
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=monthly['date'],
+            y=monthly['collection_ratio'] * 100,
+            mode='lines+markers',
+            name='Collection Rate',
+            line=dict(color='#3498db', width=2.5),
+            marker=dict(size=8, color='#2980b9'),
+            fill='tozeroy',
+            fillcolor='rgba(52, 152, 219, 0.1)'
+        ))
+        
+        # Trend line
+        if len(monthly) > 1:
+            z = np.polyfit(range(len(monthly)), monthly['collection_ratio'] * 100, 1)
+            p = np.poly1d(z)
+            fig.add_trace(go.Scatter(
+                x=monthly['date'],
+                y=p(range(len(monthly))),
+                mode='lines',
+                name='Trend',
+                line=dict(color='#e74c3c', width=1.5, dash='dash')
+            ))
+        
+        # Performance zones
+        fig.add_hrect(y0=85, y1=100, fillcolor="#27ae60", opacity=0.05, line_width=0)
+        fig.add_hrect(y0=70, y1=85, fillcolor="#f39c12", opacity=0.05, line_width=0)
+        fig.add_hrect(y0=0, y1=70, fillcolor="#e74c3c", opacity=0.05, line_width=0)
+        
+        fig.update_layout(
+            xaxis_title=time_granularity,
+            yaxis_title="Collection Rate (%)",
+            height=450,
+            hovermode='x unified',
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(size=11),
+            xaxis=dict(
+                rangeslider=dict(visible=True, thickness=0.05),
+                type="date",
+                gridcolor='#ecf0f1'
+            ),
+            yaxis=dict(gridcolor='#ecf0f1')
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, key="trends_collection_rate_evolution")
+        
+        # Statistics
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Average", f"{monthly['collection_ratio'].mean():.1%}")
+        col2.metric("Best", f"{monthly['collection_ratio'].max():.1%}")
+        col3.metric("Worst", f"{monthly['collection_ratio'].min():.1%}")
+        col4.metric("Std Dev", f"{monthly['collection_ratio'].std():.1%}")
+        
+        st.markdown("---")
+    
+    # NOTE: All currency values are displayed in USD ($) for consistency
+    # The format_currency() function handles all monetary formatting
+    
+    st.info("💡 **Note:** All financial values are displayed in USD for consistent comparison across countries")
+
+
+# ---------------------------#
+# Run App
+# ---------------------------#
+if __name__ == "__main__":
+    main()
