@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 from pathlib import Path
+import time
 
 st.set_page_config(page_title="Summary Dashboard", page_icon="📊", layout="wide")
 
@@ -120,6 +121,49 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=N
     )
     
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
+
+
+def _get_processed_mtime():
+    """Return processed.timestamp epoch float if exists, else 0."""
+    marker = Path('Raw_Data/processed/processed.timestamp')
+    try:
+        if marker.exists():
+            try:
+                return float(marker.read_text())
+            except Exception:
+                return marker.stat().st_mtime
+    except Exception:
+        return 0
+    return 0
+
+
+@st.cache_data(ttl=3600)
+def get_aggregated_from_parquet(table_name: str, x_col: str, y_col: str, color_col: str | None, countries_tuple: tuple, processed_mtime: float):
+    """Load a table directly from Raw_Data/processed/<table_name>.parquet, apply country filter and aggregate.
+
+    Cache key includes processed_mtime and countries_tuple so cache invalidates when processed data changes.
+    """
+    processed_dir = Path('Raw_Data/processed')
+    p = processed_dir / f"{table_name}.parquet"
+    if not p.exists():
+        return pd.DataFrame()
+    try:
+        df = pd.read_parquet(p)
+    except Exception:
+        return pd.DataFrame()
+
+    if countries_tuple and 'country' in df.columns:
+        df = df[df['country'].isin(countries_tuple)]
+
+    if y_col not in df.columns:
+        return pd.DataFrame()
+
+    if color_col and color_col in df.columns:
+        df_avg = df.groupby([x_col, color_col], as_index=False)[y_col].mean().round(2)
+    else:
+        df_avg = df.groupby(x_col, as_index=False)[y_col].mean().round(2)
+
+    return df_avg
 
 def create_metric_card(df, metric_col, title, unit="%", calculation_func=None):
     """Create a metric card with current value and trend"""
@@ -272,37 +316,38 @@ with col3:
         df_filtered = df[df[filter_col].isin(selected_values)]
         
         # Calculate NRW
-        if 'w_supplied' in df_filtered.columns and 'total_consumption' in df_filtered.columns:
-            df_filtered["NRW"] = df_filtered.apply(
-                lambda row: ((row["w_supplied"] - row["total_consumption"]) / row["w_supplied"]) * 100
-                if pd.notna(row["w_supplied"]) and row["w_supplied"] != 0 else 0,
-                axis=1
-            ).round(2)
-            
-            # Drop NaN and zero values before calculating mean
-            valid_nrw = df_filtered["NRW"].replace(0, pd.NA).dropna()
-            
-            if len(valid_nrw) > 0:
-                avg_nrw = valid_nrw.mean()
-                st.metric(
-                    label="Non-Revenue Water (NRW)",
-                    value=f"{avg_nrw:.1f}%",
-                    help="% of water supplied not generating revenue - Category: Efficiency"
+        if 'NRW' not in df_filtered.columns and 'w_supplied' in df_filtered.columns and 'total_consumption' in df_filtered.columns:
+            # Vectorized NRW (computed here only if not precomputed in data loader)
+            df_filtered['w_supplied'] = pd.to_numeric(df_filtered['w_supplied'], errors='coerce')
+            df_filtered['total_consumption'] = pd.to_numeric(df_filtered['total_consumption'], errors='coerce')
+            df_filtered['NRW'] = ((df_filtered['w_supplied'] - df_filtered['total_consumption']) / df_filtered['w_supplied']) * 100
+            df_filtered.loc[~df_filtered['w_supplied'].notna() | (df_filtered['w_supplied'] == 0), 'NRW'] = pd.NA
+            df_filtered['NRW'] = df_filtered['NRW'].round(2)
+
+        # Drop NaN and zero-like values before calculating mean
+        valid_nrw = df_filtered['NRW'].replace(0, pd.NA).dropna() if 'NRW' in df_filtered.columns else pd.Series(dtype='float64')
+
+        if len(valid_nrw) > 0:
+            avg_nrw = valid_nrw.mean()
+            st.metric(
+                label="Non-Revenue Water (NRW)",
+                value=f"{avg_nrw:.1f}%",
+                help="% of water supplied not generating revenue - Category: Efficiency"
+            )
+
+            # Chart
+            x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
+            if x_col in df_filtered.columns:
+                plotly_chart_with_labels(
+                    df_filtered, 
+                    x_col=x_col, 
+                    y_col='NRW', 
+                    chart_label="Non-Revenue Water (NRW)",
+                    unit="(%)",
+                    color_col='country'
                 )
-                
-                # Chart
-                x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
-                if x_col in df_filtered.columns:
-                    plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='NRW', 
-                        chart_label="Non-Revenue Water (NRW)",
-                        unit="(%)",
-                        color_col='country'
-                    )
-            else:
-                st.warning("No valid NRW data available")
+        else:
+            st.warning("No valid NRW data available")
 
 with col4:
     # KPI 4: Revenue Collection Efficiency
@@ -328,27 +373,28 @@ with col4:
         # Calculate efficiency
         has_revenue = 'sewer_revenue' in df_filtered_fin.columns or 'water_revenue' in df_filtered_fin.columns
         has_billed = 'sewer_billed' in df_filtered_fin.columns or 'water_billed' in df_filtered_fin.columns
-        
+
         if has_revenue and has_billed:
-            # Fill missing values with 0
+            # Ensure numeric and fill missing with 0 where appropriate
             for col in ['sewer_revenue', 'water_revenue', 'sewer_billed', 'water_billed']:
                 if col not in df_filtered_fin.columns:
                     df_filtered_fin[col] = 0
                 else:
-                    df_filtered_fin[col] = df_filtered_fin[col].fillna(0)
-            
+                    df_filtered_fin[col] = pd.to_numeric(df_filtered_fin[col], errors='coerce').fillna(0)
+
             df_filtered_fin['total_revenue'] = df_filtered_fin['sewer_revenue'] + df_filtered_fin['water_revenue']
             df_filtered_fin['total_billed'] = df_filtered_fin['sewer_billed'] + df_filtered_fin['water_billed']
-            
-            df_filtered_fin["Revenue_Collection_Efficiency"] = df_filtered_fin.apply(
-                lambda row: (row["total_revenue"] / row["total_billed"]) * 100
-                if pd.notna(row["total_billed"]) and row["total_billed"] != 0 else 0,
-                axis=1
-            ).round(2)
-            
-            # Drop NaN and zero values before calculating mean
-            valid_efficiency = df_filtered_fin["Revenue_Collection_Efficiency"].replace(0, pd.NA).dropna()
-            
+
+            # Vectorized efficiency (if not precomputed)
+            if 'Revenue_Collection_Efficiency' not in df_filtered_fin.columns:
+                df_filtered_fin.loc[(df_filtered_fin['total_billed'].notna()) & (df_filtered_fin['total_billed'] != 0), 'Revenue_Collection_Efficiency'] = (
+                    df_filtered_fin['total_revenue'] / df_filtered_fin['total_billed']
+                ) * 100
+                df_filtered_fin['Revenue_Collection_Efficiency'] = df_filtered_fin['Revenue_Collection_Efficiency'].round(2)
+
+            # Drop NaN and zero-like values before calculating mean
+            valid_efficiency = df_filtered_fin['Revenue_Collection_Efficiency'].replace(0, pd.NA).dropna()
+
             if len(valid_efficiency) > 0:
                 avg_efficiency = valid_efficiency.mean()
                 st.metric(
