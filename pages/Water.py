@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import os
 from pathlib import Path
@@ -8,81 +9,7 @@ st.set_page_config(page_title="Water Service Dashboard", page_icon="💧", layou
 
 st.title("💧 Water Service Dashboard")
 
-# --- Helper Functions ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_data_from_csv():
-    """Load data from individual CSV files"""
-    data = {}
-    countries = ['cameroon', 'lesotho', 'malawi', 'uganda']
-    base_path = Path('Raw_Data')
-    
-    # Initialize empty dataframes
-    all_fin_service_list = []
-    all_national_list = []
-    billing_list = []
-    production_list = []
-    s_access_list = []
-    s_service_list = []
-    w_access_list = []
-    w_service_list = []
-    
-    for country in countries:
-        country_path = base_path / country
-        try:
-            # Load each file type
-            if (country_path / f'all_fin_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_fin_service_{country}.csv')
-                df['country'] = country.capitalize()
-                all_fin_service_list.append(df)
-            
-            if (country_path / f'all_nationalacc_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_nationalacc_{country}.csv')
-                df['country'] = country.capitalize()
-                all_national_list.append(df)
-            
-            if (country_path / f'billing_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'billing_{country}.csv')
-                df['country'] = country.capitalize()
-                billing_list.append(df)
-            
-            if (country_path / f'production_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'production_{country}.csv')
-                df['country'] = country.capitalize()
-                production_list.append(df)
-            
-            if (country_path / f's_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_access_{country}.csv')
-                df['country'] = country.capitalize()
-                s_access_list.append(df)
-            
-            if (country_path / f's_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_service_{country}.csv')
-                df['country'] = country.capitalize()
-                s_service_list.append(df)
-            
-            if (country_path / f'w_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_access_{country}.csv')
-                df['country'] = country.capitalize()
-                w_access_list.append(df)
-            
-            if (country_path / f'w_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_service_{country}.csv')
-                df['country'] = country.capitalize()
-                w_service_list.append(df)
-        except Exception as e:
-            st.warning(f"Error loading data for {country}: {e}")
-    
-    # Concatenate all dataframes
-    data['all_fin_service'] = pd.concat(all_fin_service_list, ignore_index=True) if all_fin_service_list else pd.DataFrame()
-    data['all_national'] = pd.concat(all_national_list, ignore_index=True) if all_national_list else pd.DataFrame()
-    data['billing'] = pd.concat(billing_list, ignore_index=True) if billing_list else pd.DataFrame()
-    data['production'] = pd.concat(production_list, ignore_index=True) if production_list else pd.DataFrame()
-    data['s_access'] = pd.concat(s_access_list, ignore_index=True) if s_access_list else pd.DataFrame()
-    data['s_service'] = pd.concat(s_service_list, ignore_index=True) if s_service_list else pd.DataFrame()
-    data['w_access'] = pd.concat(w_access_list, ignore_index=True) if w_access_list else pd.DataFrame()
-    data['w_service'] = pd.concat(w_service_list, ignore_index=True) if w_service_list else pd.DataFrame()
-    
-    return data
+from utils.data_loader import load_all_data
 
 def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
     """Create a line chart with labels"""
@@ -120,41 +47,18 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=N
     
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
 
-# --- Load Data with Caching ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_all_data():
-    """Load all data with caching"""
-    try:
-        # Try loading from Excel first
-        if os.path.exists('Raw_Data/Master_Data.xlsx'):
-            with st.spinner('Loading data from Excel...'):
-                return {
-                    'all_fin_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_fin_service'),
-                    'all_national': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_national'),
-                    'billing': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='billing'),
-                    'production': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='production'),
-                    's_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_access'),
-                    's_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_service'),
-                    'w_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_access'),
-                    'w_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_service')
-                }
-        else:
-            raise FileNotFoundError("Excel file not found, loading from CSV files")
-    except:
-        # Load from CSV files
-        with st.spinner('Loading data from CSV files...'):
-            return load_data_from_csv()
+# Use centralized loader from utils.data_loader (cached there)
 
 # Load data once with caching
 data_dict = load_all_data()
-all_fin_service_df = data_dict['all_fin_service']
-all_national_df = data_dict['all_national']
-billing_df = data_dict['billing']
-production_df = data_dict['production']
-s_access_df = data_dict['s_access']
-s_service_df = data_dict['s_service']
-w_access_df = data_dict['w_access']
-w_service_df = data_dict['w_service']
+all_fin_service_df = data_dict.get('all_fin_service', pd.DataFrame())
+all_national_df = data_dict.get('all_national', pd.DataFrame())
+billing_df = data_dict.get('billing', pd.DataFrame())
+production_df = data_dict.get('production', pd.DataFrame())
+s_access_df = data_dict.get('s_access', pd.DataFrame())
+s_service_df = data_dict.get('s_service', pd.DataFrame())
+w_access_df = data_dict.get('w_access', pd.DataFrame())
+w_service_df = data_dict.get('w_service', pd.DataFrame())
 
 # --- External Filter ---
 filter_col = 'country'
@@ -246,11 +150,12 @@ with col2:
             df_filtered['total_passed'] = df_filtered['test_passed_chlorine'] + df_filtered['tests_passed_ecoli']
             df_filtered['total_conducted'] = df_filtered['tests_conducted_chlorine'] + df_filtered['test_conducted_ecoli']
             
-            df_filtered["Water_Quality_Compliance"] = df_filtered.apply(
-                lambda row: (row["total_passed"] / row["total_conducted"]) * 100
-                if pd.notna(row["total_conducted"]) and row["total_conducted"] != 0 else 0,
-                axis=1
-            ).round(2)
+            # Vectorized water quality compliance
+            total_passed = pd.to_numeric(df_filtered.get('total_passed', pd.Series(dtype=float)), errors='coerce')
+            total_conducted = pd.to_numeric(df_filtered.get('total_conducted', pd.Series(dtype=float)), errors='coerce')
+            compliance = (total_passed / total_conducted) * 100
+            compliance = compliance.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['Water_Quality_Compliance'] = compliance.round(2)
             
             # Drop NaN values before calculating mean
             valid_compliance = df_filtered["Water_Quality_Compliance"].replace(0, pd.NA).dropna()
@@ -291,11 +196,12 @@ with col3:
         
         # Calculate Metering Ratio
         if 'metered' in df_filtered.columns and 'total_consumption' in df_filtered.columns:
-            df_filtered["Metering_Ratio"] = df_filtered.apply(
-                lambda row: (row["metered"] / row["total_consumption"]) * 100
-                if pd.notna(row["total_consumption"]) and row["total_consumption"] != 0 else 0,
-                axis=1
-            ).round(2)
+            # Vectorized metering ratio
+            metered = pd.to_numeric(df_filtered.get('metered', pd.Series(dtype=float)), errors='coerce')
+            total_consumption = pd.to_numeric(df_filtered.get('total_consumption', pd.Series(dtype=float)), errors='coerce')
+            metering = (metered / total_consumption) * 100
+            metering = metering.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['Metering_Ratio'] = metering.round(2)
             
             # Drop NaN and zero values before calculating mean
             valid_metering = df_filtered["Metering_Ratio"].replace(0, pd.NA).dropna()
@@ -348,11 +254,12 @@ with col4:
             df_filtered['opex'] = df_filtered['opex'].fillna(0)
             df_filtered['total_revenue'] = df_filtered['sewer_revenue'] + df_filtered['water_revenue']
             
-            df_filtered["Operating_Cost_Coverage"] = df_filtered.apply(
-                lambda row: (row["total_revenue"] / row["opex"]) * 100
-                if pd.notna(row["opex"]) and row["opex"] != 0 else 0,
-                axis=1
-            ).round(2)
+            # Vectorized operating cost coverage
+            total_revenue = pd.to_numeric(df_filtered.get('total_revenue', pd.Series(dtype=float)), errors='coerce')
+            opex = pd.to_numeric(df_filtered.get('opex', pd.Series(dtype=float)), errors='coerce')
+            coverage = (total_revenue / opex) * 100
+            coverage = coverage.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['Operating_Cost_Coverage'] = coverage.round(2)
             
             # Drop NaN and zero values before calculating mean
             valid_coverage = df_filtered["Operating_Cost_Coverage"].replace(0, pd.NA).dropna()

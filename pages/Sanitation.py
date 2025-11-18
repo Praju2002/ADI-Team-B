@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import os
 from pathlib import Path
@@ -8,81 +9,7 @@ st.set_page_config(page_title="Sanitation Service Dashboard", page_icon="🚽", 
 
 st.title("🚽 Sanitation Service Dashboard")
 
-# --- Helper Functions ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_data_from_csv():
-    """Load data from individual CSV files"""
-    data = {}
-    countries = ['cameroon', 'lesotho', 'malawi', 'uganda']
-    base_path = Path('Raw_Data')
-    
-    # Initialize empty dataframes
-    all_fin_service_list = []
-    all_national_list = []
-    billing_list = []
-    production_list = []
-    s_access_list = []
-    s_service_list = []
-    w_access_list = []
-    w_service_list = []
-    
-    for country in countries:
-        country_path = base_path / country
-        try:
-            # Load each file type
-            if (country_path / f'all_fin_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_fin_service_{country}.csv')
-                df['country'] = country.capitalize()
-                all_fin_service_list.append(df)
-            
-            if (country_path / f'all_nationalacc_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_nationalacc_{country}.csv')
-                df['country'] = country.capitalize()
-                all_national_list.append(df)
-            
-            if (country_path / f'billing_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'billing_{country}.csv')
-                df['country'] = country.capitalize()
-                billing_list.append(df)
-            
-            if (country_path / f'production_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'production_{country}.csv')
-                df['country'] = country.capitalize()
-                production_list.append(df)
-            
-            if (country_path / f's_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_access_{country}.csv')
-                df['country'] = country.capitalize()
-                s_access_list.append(df)
-            
-            if (country_path / f's_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_service_{country}.csv')
-                df['country'] = country.capitalize()
-                s_service_list.append(df)
-            
-            if (country_path / f'w_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_access_{country}.csv')
-                df['country'] = country.capitalize()
-                w_access_list.append(df)
-            
-            if (country_path / f'w_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_service_{country}.csv')
-                df['country'] = country.capitalize()
-                w_service_list.append(df)
-        except Exception as e:
-            st.warning(f"Error loading data for {country}: {e}")
-    
-    # Concatenate all dataframes
-    data['all_fin_service'] = pd.concat(all_fin_service_list, ignore_index=True) if all_fin_service_list else pd.DataFrame()
-    data['all_national'] = pd.concat(all_national_list, ignore_index=True) if all_national_list else pd.DataFrame()
-    data['billing'] = pd.concat(billing_list, ignore_index=True) if billing_list else pd.DataFrame()
-    data['production'] = pd.concat(production_list, ignore_index=True) if production_list else pd.DataFrame()
-    data['s_access'] = pd.concat(s_access_list, ignore_index=True) if s_access_list else pd.DataFrame()
-    data['s_service'] = pd.concat(s_service_list, ignore_index=True) if s_service_list else pd.DataFrame()
-    data['w_access'] = pd.concat(w_access_list, ignore_index=True) if w_access_list else pd.DataFrame()
-    data['w_service'] = pd.concat(w_service_list, ignore_index=True) if w_service_list else pd.DataFrame()
-    
-    return data
+from utils.data_loader import load_all_data
 
 def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
     """Create a line chart with labels"""
@@ -120,41 +47,18 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=N
     
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
 
-# --- Load Data with Caching ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_all_data():
-    """Load all data with caching"""
-    try:
-        # Try loading from Excel first
-        if os.path.exists('Raw_Data/Master_Data.xlsx'):
-            with st.spinner('Loading data from Excel...'):
-                return {
-                    'all_fin_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_fin_service'),
-                    'all_national': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_national'),
-                    'billing': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='billing'),
-                    'production': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='production'),
-                    's_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_access'),
-                    's_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_service'),
-                    'w_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_access'),
-                    'w_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_service')
-                }
-        else:
-            raise FileNotFoundError("Excel file not found, loading from CSV files")
-    except:
-        # Load from CSV files
-        with st.spinner('Loading data from CSV files...'):
-            return load_data_from_csv()
+# Use centralized loader from utils.data_loader (cached there)
 
 # Load data once with caching
 data_dict = load_all_data()
-all_fin_service_df = data_dict['all_fin_service']
-all_national_df = data_dict['all_national']
-billing_df = data_dict['billing']
-production_df = data_dict['production']
-s_access_df = data_dict['s_access']
-s_service_df = data_dict['s_service']
-w_access_df = data_dict['w_access']
-w_service_df = data_dict['w_service']
+all_fin_service_df = data_dict.get('all_fin_service', pd.DataFrame())
+all_national_df = data_dict.get('all_national', pd.DataFrame())
+billing_df = data_dict.get('billing', pd.DataFrame())
+production_df = data_dict.get('production', pd.DataFrame())
+s_access_df = data_dict.get('s_access', pd.DataFrame())
+s_service_df = data_dict.get('s_service', pd.DataFrame())
+w_access_df = data_dict.get('w_access', pd.DataFrame())
+w_service_df = data_dict.get('w_service', pd.DataFrame())
 
 # --- External Filter ---
 filter_col = 'country'
@@ -191,11 +95,12 @@ with col1:
         
         # Calculate Sewer Coverage
         if 'sewer_connections' in df_filtered.columns and 'households' in df_filtered.columns:
-            df_filtered["Sewer_Coverage"] = df_filtered.apply(
-                lambda row: (row["sewer_connections"] / row["households"]) * 100
-                if pd.notna(row["households"]) and row["households"] != 0 else 0,
-                axis=1
-            ).round(2)
+            # Vectorized sewer coverage
+            sewer_connections = pd.to_numeric(df_filtered.get('sewer_connections', pd.Series(dtype=float)), errors='coerce')
+            households = pd.to_numeric(df_filtered.get('households', pd.Series(dtype=float)), errors='coerce')
+            coverage = (sewer_connections / households) * 100
+            coverage = coverage.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['Sewer_Coverage'] = coverage.round(2)
             
             # Drop NaN and zero values before calculating mean
             valid_coverage = df_filtered["Sewer_Coverage"].replace(0, pd.NA).dropna()
@@ -232,11 +137,12 @@ with col2:
         
         # Calculate Wastewater Treatment Rate
         if 'ww_treated' in df_filtered.columns and 'ww_collected' in df_filtered.columns:
-            df_filtered["WW_Treated_Pct"] = df_filtered.apply(
-                lambda row: (row["ww_treated"] / row["ww_collected"]) * 100
-                if pd.notna(row["ww_collected"]) and row["ww_collected"] != 0 else 0,
-                axis=1
-            ).round(2)
+            # Vectorized wastewater treated percentage
+            ww_treated = pd.to_numeric(df_filtered.get('ww_treated', pd.Series(dtype=float)), errors='coerce')
+            ww_collected = pd.to_numeric(df_filtered.get('ww_collected', pd.Series(dtype=float)), errors='coerce')
+            treated_pct = (ww_treated / ww_collected) * 100
+            treated_pct = treated_pct.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['WW_Treated_Pct'] = treated_pct.round(2)
             
             # Drop NaN and zero values before calculating mean
             valid_treated = df_filtered["WW_Treated_Pct"].replace(0, pd.NA).dropna()
@@ -275,11 +181,12 @@ if not df.empty and filter_col in df.columns:
     
     # Calculate Complaint Resolution Rate
     if 'resolved' in df_filtered.columns and 'complaints' in df_filtered.columns:
-        df_filtered["Complaint_Resolution_Rate"] = df_filtered.apply(
-            lambda row: (row["resolved"] / row["complaints"]) * 100
-            if pd.notna(row["complaints"]) and row["complaints"] != 0 else 0,
-            axis=1
-        ).round(2)
+        # Vectorized complaint resolution
+        resolved = pd.to_numeric(df_filtered.get('resolved', pd.Series(dtype=float)), errors='coerce')
+        complaints = pd.to_numeric(df_filtered.get('complaints', pd.Series(dtype=float)), errors='coerce')
+        complaint_rate = (resolved / complaints) * 100
+        complaint_rate = complaint_rate.replace([np.inf, -np.inf], pd.NA)
+        df_filtered['Complaint_Resolution_Rate'] = complaint_rate.round(2)
         
         # Drop NaN and zero values before calculating mean
         valid_resolution = df_filtered["Complaint_Resolution_Rate"].replace(0, pd.NA).dropna()
@@ -320,12 +227,14 @@ with col3:
         
         # Calculate FS Emptied Rate
         if 'hh_emptied' in df_filtered.columns and 'households' in df_filtered.columns and 'sewer_connections' in df_filtered.columns:
-            df_filtered["FS_Emptied_Pct"] = df_filtered.apply(
-                lambda row: (row["hh_emptied"] / (row["households"] - row["sewer_connections"])) * 100
-                if pd.notna(row["households"]) and pd.notna(row["sewer_connections"]) 
-                and (row["households"] - row["sewer_connections"]) > 0 else 0,
-                axis=1
-            ).round(2)
+            # Vectorized fecal sludge emptied percentage
+            hh_emptied = pd.to_numeric(df_filtered.get('hh_emptied', pd.Series(dtype=float)), errors='coerce')
+            households = pd.to_numeric(df_filtered.get('households', pd.Series(dtype=float)), errors='coerce')
+            sewer_connections = pd.to_numeric(df_filtered.get('sewer_connections', pd.Series(dtype=float)), errors='coerce')
+            non_sewered = households - sewer_connections
+            fs_emptied_pct = (hh_emptied / non_sewered) * 100
+            fs_emptied_pct = fs_emptied_pct.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['FS_Emptied_Pct'] = fs_emptied_pct.round(2)
             
             # Drop NaN and zero values before calculating mean
             valid_emptied = df_filtered["FS_Emptied_Pct"].replace(0, pd.NA).dropna()
@@ -365,13 +274,12 @@ with col4:
         if 'fs_treated' in df_filtered.columns and 'hh_emptied' in df_filtered.columns:
             # Assuming average volume per household (this should be adjusted based on actual data)
             avg_volume_per_hh = 2.0  # m3 - adjust as needed
-            df_filtered['estimated_volume_emptied'] = df_filtered['hh_emptied'] * avg_volume_per_hh
-            
-            df_filtered["FS_Treated_Pct"] = df_filtered.apply(
-                lambda row: (row["fs_treated"] / row["estimated_volume_emptied"]) * 100
-                if pd.notna(row["estimated_volume_emptied"]) and row["estimated_volume_emptied"] > 0 else 0,
-                axis=1
-            ).round(2)
+            df_filtered['estimated_volume_emptied'] = pd.to_numeric(df_filtered.get('hh_emptied', pd.Series(dtype=float)), errors='coerce') * avg_volume_per_hh
+            fs_treated = pd.to_numeric(df_filtered.get('fs_treated', pd.Series(dtype=float)), errors='coerce')
+            estimated_vol = pd.to_numeric(df_filtered.get('estimated_volume_emptied', pd.Series(dtype=float)), errors='coerce')
+            fs_treated_pct = (fs_treated / estimated_vol) * 100
+            fs_treated_pct = fs_treated_pct.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['FS_Treated_Pct'] = fs_treated_pct.round(2)
             
             # Drop NaN and zero values before calculating mean
             valid_treated = df_filtered["FS_Treated_Pct"].replace(0, pd.NA).dropna()

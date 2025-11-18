@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import os
@@ -158,16 +159,24 @@ def load_all_data():
         with st.spinner('Loading data from CSV files...'):
             return load_data_from_csv()
 
-# Load data once with caching
-data_dict = load_all_data()
-all_fin_service_df = data_dict['all_fin_service']
-all_national_df = data_dict['all_national']
-billing_df = data_dict['billing']
-production_df = data_dict['production']
-s_access_df = data_dict['s_access']
-s_service_df = data_dict['s_service']
-w_access_df = data_dict['w_access']
-w_service_df = data_dict['w_service']
+# Lazy getter wrapper so data is only loaded on first access in this module
+_data_cache = None
+def get_data():
+    global _data_cache
+    if _data_cache is None:
+        _data_cache = load_all_data()
+    return _data_cache
+
+# Load data (lazy) - this will call the cached loader the first time
+data_dict = get_data()
+all_fin_service_df = data_dict.get('all_fin_service', pd.DataFrame())
+all_national_df = data_dict.get('all_national', pd.DataFrame())
+billing_df = data_dict.get('billing', pd.DataFrame())
+production_df = data_dict.get('production', pd.DataFrame())
+s_access_df = data_dict.get('s_access', pd.DataFrame())
+s_service_df = data_dict.get('s_service', pd.DataFrame())
+w_access_df = data_dict.get('w_access', pd.DataFrame())
+w_service_df = data_dict.get('w_service', pd.DataFrame())
 
 # --- External Filter ---
 filter_col = 'country'
@@ -271,17 +280,17 @@ with col3:
     if not df.empty and filter_col in df.columns:
         df_filtered = df[df[filter_col].isin(selected_values)]
         
-        # Calculate NRW
+        # Calculate NRW (vectorized)
         if 'w_supplied' in df_filtered.columns and 'total_consumption' in df_filtered.columns:
-            df_filtered["NRW"] = df_filtered.apply(
-                lambda row: ((row["w_supplied"] - row["total_consumption"]) / row["w_supplied"]) * 100
-                if pd.notna(row["w_supplied"]) and row["w_supplied"] != 0 else 0,
-                axis=1
-            ).round(2)
-            
+            w_sup = pd.to_numeric(df_filtered.get('w_supplied', pd.Series(dtype=float)), errors='coerce')
+            total_cons = pd.to_numeric(df_filtered.get('total_consumption', pd.Series(dtype=float)), errors='coerce')
+            nrw_series = ((w_sup - total_cons) / w_sup) * 100
+            nrw_series = nrw_series.replace([np.inf, -np.inf], pd.NA)
+            df_filtered['NRW'] = nrw_series.round(2)
+
             # Drop NaN and zero values before calculating mean
-            valid_nrw = df_filtered["NRW"].replace(0, pd.NA).dropna()
-            
+            valid_nrw = df_filtered['NRW'].replace(0, pd.NA).dropna()
+
             if len(valid_nrw) > 0:
                 avg_nrw = valid_nrw.mean()
                 st.metric(
@@ -289,14 +298,14 @@ with col3:
                     value=f"{avg_nrw:.1f}%",
                     help="% of water supplied not generating revenue - Category: Efficiency"
                 )
-                
+
                 # Chart
                 x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
                 if x_col in df_filtered.columns:
                     plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='NRW', 
+                        df_filtered,
+                        x_col=x_col,
+                        y_col='NRW',
                         chart_label="Non-Revenue Water (NRW)",
                         unit="(%)",
                         color_col='country'
@@ -336,19 +345,18 @@ with col4:
                     df_filtered_fin[col] = 0
                 else:
                     df_filtered_fin[col] = df_filtered_fin[col].fillna(0)
-            
+
             df_filtered_fin['total_revenue'] = df_filtered_fin['sewer_revenue'] + df_filtered_fin['water_revenue']
             df_filtered_fin['total_billed'] = df_filtered_fin['sewer_billed'] + df_filtered_fin['water_billed']
-            
-            df_filtered_fin["Revenue_Collection_Efficiency"] = df_filtered_fin.apply(
-                lambda row: (row["total_revenue"] / row["total_billed"]) * 100
-                if pd.notna(row["total_billed"]) and row["total_billed"] != 0 else 0,
-                axis=1
-            ).round(2)
-            
+
+            # Vectorized revenue collection efficiency
+            billed_series = df_filtered_fin['total_billed'].replace({0: pd.NA})
+            rev_series = df_filtered_fin['total_revenue']
+            df_filtered_fin['Revenue_Collection_Efficiency'] = (rev_series / billed_series) * 100
+
             # Drop NaN and zero values before calculating mean
-            valid_efficiency = df_filtered_fin["Revenue_Collection_Efficiency"].replace(0, pd.NA).dropna()
-            
+            valid_efficiency = df_filtered_fin['Revenue_Collection_Efficiency'].replace(0, pd.NA).dropna()
+
             if len(valid_efficiency) > 0:
                 avg_efficiency = valid_efficiency.mean()
                 st.metric(
@@ -356,14 +364,14 @@ with col4:
                     value=f"{avg_efficiency:.1f}%",
                     help="% of billed revenue actually collected - Category: Financial Sustainability"
                 )
-                
+
                 # Chart
                 x_col = 'date' if 'date' in df_filtered_fin.columns else 'date_MMYY'
                 if x_col in df_filtered_fin.columns:
                     plotly_chart_with_labels(
-                        df_filtered_fin, 
-                        x_col=x_col, 
-                        y_col='Revenue_Collection_Efficiency', 
+                        df_filtered_fin,
+                        x_col=x_col,
+                        y_col='Revenue_Collection_Efficiency',
                         chart_label="Revenue Collection Efficiency",
                         unit="(%)",
                         color_col='country'
