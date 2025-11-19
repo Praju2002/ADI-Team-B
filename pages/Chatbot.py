@@ -17,23 +17,42 @@ with st.sidebar:
         st.success(f"Index built: {info.get('n_docs', 0)} documents")
 
 if 'history' not in st.session_state:
-    st.session_state.history = []  # list of (question, answer, sources)
+    st.session_state.history = []  # list of dicts: {'q','answer','insight','sources'}
+
+if 'chat_input' not in st.session_state:
+    st.session_state.chat_input = ''
+
+# Suggested example questions to help users
+suggested_questions = [
+    "Which country has the highest revenue collection efficiency?",
+    "Summarize financial health by country.",
+    "Show top 5 rows with highest non-revenue water (NRW).",
+    "What are the top revenue sources for Malawi?",
+    "List months with the largest drop in production for Uganda."
+]
+
+st.markdown("**Try one of these example questions:**")
+btn_cols = st.columns(len(suggested_questions))
+for c, q in zip(btn_cols, suggested_questions):
+    if c.button(q):
+        st.session_state.chat_input = q
+        st.experimental_rerun()
 
 col1, col2 = st.columns([4,1])
 with col1:
-    user_q = st.text_input("Ask a question about the datasets and dashboard:")
+    user_q = st.text_input("Ask a question about the datasets and dashboard:", key='chat_input')
 with col2:
     if st.button("Ask"):
-        # noop here; handled below with user_q
+        # no-op: handled by the presence of user_q below
         pass
 
 if user_q:
     key = api_key_input or os.environ.get('GOOGLE_API_KEY')
     if not key:
-        st.warning("No Google API key provided. Showing top-matching rows as a fallback (no LLM call).")
+        st.warning("No Google API key provided. Showing top-matching rows and a quick insight as a fallback (no LLM call).")
         with st.spinner("Retrieving local context..."):
             docs = chatbot.get_top_docs(user_q, top_k=top_k)
-            # Build a simple fallback answer summarizing the retrieved snippets
+            # Build a simple fallback answer summarizing the retrieved snippets and compute insights
             if docs:
                 snippets = []
                 for s in docs:
@@ -42,23 +61,44 @@ if user_q:
                 fallback_answer = "Top matching rows:\n\n" + "\n\n".join(snippets)
             else:
                 fallback_answer = "No matching rows found in the local index. Please rebuild the index or provide an API key to call the LLM."
-            res = {'answer': fallback_answer, 'sources': docs}
-            st.session_state.history.append((user_q, res['answer'], res.get('sources', [])))
+            insight = chatbot.summarize_docs_insights(docs)
+            res = {'answer': fallback_answer, 'sources': docs, 'insight': insight}
+            st.session_state.history.append({'q': user_q, 'answer': res['answer'], 'insight': res.get('insight'), 'sources': res.get('sources', [])})
     else:
         with st.spinner("Retrieving context and asking the model..."):
             res = chatbot.answer_query(user_q, top_k=top_k, api_key=key)
-            st.session_state.history.append((user_q, res['answer'], res.get('sources', [])))
+            # ensure insight is present (LLM may include), but also compute a deterministic insight summary
+            if 'insight' not in res or not res.get('insight'):
+                res['insight'] = chatbot.summarize_docs_insights(res.get('sources', []))
+            st.session_state.history.append({'q': user_q, 'answer': res['answer'], 'insight': res.get('insight'), 'sources': res.get('sources', [])})
 
 st.markdown("---")
 st.header("Conversation")
-for q, a, sources in reversed(st.session_state.history):
+for entry in reversed(st.session_state.history):
+    q = entry.get('q')
+    a = entry.get('answer')
+    insight = entry.get('insight')
+    sources = entry.get('sources', [])
     st.markdown(f"**Q:** {q}")
-    st.markdown(f"**A:** {a}")
+    if insight:
+        with st.container():
+            st.success("Insight")
+            # `insight` may be either a string or a dict; render reasonably
+            if isinstance(insight, str):
+                st.markdown(insight)
+            elif isinstance(insight, dict):
+                # compact table-like rendering
+                for k, v in insight.items():
+                    st.markdown(f"- **{k}**: {v}")
+    st.markdown("**A:**")
+    # Render the main answer with preserved newlines
+    st.markdown(a)
     if sources:
         with st.expander("Sources / Context snippets"):
             for s in sources:
                 meta = s.get('meta', {})
-                st.write(f"- {meta.get('source')} row {meta.get('row_index')} (score={s.get('score'):.3f})")
+                score = s.get('score')
+                st.write(f"- {meta.get('source')} row {meta.get('row_index')} (score={score:.3f})")
                 st.write(s.get('text'))
     st.markdown('---')
 

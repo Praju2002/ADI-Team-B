@@ -203,4 +203,86 @@ def answer_query(query: str, top_k: int = 4, api_key: Optional[str] = None) -> D
     docs = get_top_docs(query, top_k=top_k)
     prompt = _build_prompt(query, docs)
     resp = call_google_bison(prompt, api_key=api_key)
-    return {'answer': resp, 'sources': docs}
+    # Also compute a deterministic insight summary from the retrieved docs so UI can show
+    insight = summarize_docs_insights(docs)
+    return {'answer': resp, 'sources': docs, 'insight': insight}
+
+
+def _try_parse_number(s: str):
+    """Try to parse a string as number. Returns number or original string."""
+    if s is None:
+        return None
+    s = str(s).strip()
+    if s == '':
+        return None
+    # handle percentages
+    if s.endswith('%'):
+        try:
+            return float(s.rstrip('%').replace(',',''))
+        except Exception:
+            pass
+    try:
+        return float(s.replace(',',''))
+    except Exception:
+        return s
+
+
+def _parse_doc_text_to_dict(text: str) -> Dict[str, Any]:
+    """Parse a doc text of the form 'col: val | col2: val2' into a dict."""
+    out = {}
+    if not text:
+        return out
+    parts = [p.strip() for p in text.split('|') if p.strip()]
+    for p in parts:
+        if ':' not in p:
+            continue
+        k, v = p.split(':', 1)
+        k = k.strip()
+        v = v.strip()
+        parsed = _try_parse_number(v)
+        out[k] = parsed
+    return out
+
+
+def summarize_docs_insights(docs: List[Dict[str, Any]]) -> Any:
+    """Create a short, human-friendly insight summary from a list of retrieved docs.
+
+    Returns either a string (short summary) or a dict with simple aggregates.
+    The summarizer is intentionally conservative: it extracts numeric columns and
+    computes counts/means for the most common numeric fields, and reports top
+    categorical values (e.g., country) when present.
+    """
+    if not docs:
+        return None
+
+    parsed_rows = [_parse_doc_text_to_dict(d.get('text', '')) for d in docs]
+    # collect column types
+    numeric_cols = {}
+    categorical_counts = {}
+    for row in parsed_rows:
+        for k, v in row.items():
+            if v is None:
+                continue
+            if isinstance(v, (int, float)):
+                numeric_cols.setdefault(k, []).append(float(v))
+            else:
+                categorical_counts.setdefault(k, {}).setdefault(str(v), 0)
+                categorical_counts[k][str(v)] += 1
+
+    insight = {}
+    # summarize numeric columns (top 4 by frequency)
+    num_items = sorted(numeric_cols.items(), key=lambda kv: len(kv[1]), reverse=True)[:4]
+    for k, vals in num_items:
+        arr = np.array(vals)
+        insight[f"avg_{k}"] = round(float(np.nanmean(arr)), 2)
+        insight[f"sum_{k}"] = float(np.nansum(arr))
+        insight[f"min_{k}"] = float(np.nanmin(arr))
+        insight[f"max_{k}"] = float(np.nanmax(arr))
+
+    # summarize categorical columns: top value
+    for k, counts in categorical_counts.items():
+        top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[0]
+        insight[f"top_{k}"] = {"value": top[0], "count": int(top[1])}
+
+    # Return a dict for UI to render succinctly
+    return insight if insight else None
