@@ -58,7 +58,7 @@ with st.spinner('Loading sanitation data...'):
 # --- External Filter ---
 filter_col = 'country'
 
-st.sidebar.header("🌍 Filter Options")
+st.sidebar.header("🔍 Filter Options")
 
 # Get unique countries
 if not s_service_df.empty and filter_col in s_service_df.columns:
@@ -69,13 +69,79 @@ else:
     available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
 selected_values = st.sidebar.multiselect(
-    f"Select Country/Countries", 
+    "Select Countries", 
     options=available_countries,
-    default=available_countries
+    default=available_countries,
+    help="Filter data by one or more countries"
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 Select countries to filter all sanitation service metrics.")
+
+# Date filtering with quick period selection
+date_min = None
+date_max = None
+date_col = None
+
+for df in [s_service_df, all_fin_service_df]:
+    if not df.empty:
+        # Check for date columns
+        if 'date' in df.columns:
+            date_col = 'date'
+        elif 'date_MMYY' in df.columns:
+            date_col = 'date_MMYY'
+        
+        if date_col and date_col in df.columns:
+            try:
+                df_date_min = pd.to_datetime(df[date_col], errors='coerce').min()
+                df_date_max = pd.to_datetime(df[date_col], errors='coerce').max()
+                if pd.notna(df_date_min) and pd.notna(df_date_max):
+                    if date_min is None or df_date_min < date_min:
+                        date_min = df_date_min
+                    if date_max is None or df_date_max > date_max:
+                        date_max = df_date_max
+            except:
+                pass
+
+if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
+    st.sidebar.markdown("### 📅 Time Period")
+    period_option = st.sidebar.radio(
+        "Select Period:",
+        ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
+        index=0,
+        help="Choose a time period to analyze"
+    )
+    
+    if period_option == "Last 12 Months":
+        date_range = (date_max - pd.DateOffset(months=12), date_max)
+    elif period_option == "Last 6 Months":
+        date_range = (date_max - pd.DateOffset(months=6), date_max)
+    elif period_option == "Custom Range":
+        date_range = st.sidebar.date_input("Select Date Range:", value=(date_min, date_max))
+    else:
+        date_range = (date_min, date_max)
+    
+    # Apply date filtering to dataframes
+    if date_range and len(date_range) == 2:
+        start = pd.to_datetime(date_range[0]) if not isinstance(date_range[0], pd.Timestamp) else date_range[0]
+        end = pd.to_datetime(date_range[1]) if not isinstance(date_range[1], pd.Timestamp) else date_range[1]
+        
+        if not s_service_df.empty:
+            dc = 'date' if 'date' in s_service_df.columns else 'date_MMYY' if 'date_MMYY' in s_service_df.columns else None
+            if dc:
+                try:
+                    s_service_df[dc] = pd.to_datetime(s_service_df[dc], errors='coerce')
+                    s_service_df = s_service_df[(s_service_df[dc] >= start) & (s_service_df[dc] <= end)]
+                except:
+                    pass
+        
+        if not all_fin_service_df.empty:
+            dc = 'date' if 'date' in all_fin_service_df.columns else 'date_MMYY' if 'date_MMYY' in all_fin_service_df.columns else None
+            if dc:
+                try:
+                    all_fin_service_df[dc] = pd.to_datetime(all_fin_service_df[dc], errors='coerce')
+                    all_fin_service_df = all_fin_service_df[(all_fin_service_df[dc] >= start) & (all_fin_service_df[dc] <= end)]
+                except:
+                    pass
 
 # --- Main Dashboard ---
 

@@ -257,21 +257,29 @@ def main():
     analyzer = FinancialHealthAnalyzer()
 
     # Sidebar: Filters
-    st.sidebar.header("🔍 Filters")
+    st.sidebar.header("🔍 Filter Options")
     available_countries = sorted({c for df in analyzer.data.values() if not df.empty and 'country' in df.columns for c in df['country'].unique()})
-    selected_countries = st.sidebar.multiselect("Select Countries:", available_countries, default=available_countries)
+    selected_countries = st.sidebar.multiselect(
+        "Select Countries", 
+        available_countries, 
+        default=available_countries,
+        help="Filter data by one or more countries"
+    )
+    
+    st.sidebar.markdown("---")
     
     # Enhanced date filtering with slider
     date_min = min((df['date'].min() for df in analyzer.data.values() if not df.empty and 'date' in df.columns), default=None)
     date_max = max((df['date'].max() for df in analyzer.data.values() if not df.empty and 'date' in df.columns), default=None)
     
     if date_min and date_max:
-        st.sidebar.subheader("📅 Time Period")
+        st.sidebar.markdown("### 📅 Time Period")
         # Quick period selection
         period_option = st.sidebar.radio(
             "Select Period:",
             ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
-            index=0
+            index=0,
+            help="Choose a time period to analyze"
         )
         
         if period_option == "Last 12 Months":
