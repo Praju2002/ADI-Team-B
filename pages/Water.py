@@ -11,87 +11,6 @@ st.set_page_config(page_title="Water Service Dashboard", page_icon="💧", layou
 st.title("💧 Water Service Dashboard")
 
 # --- Helper Functions ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_data_from_csv():
-    """Load data from individual CSV files"""
-    data = {}
-    countries = ['cameroon', 'lesotho', 'malawi', 'uganda']
-    base_path = Path('Raw_Data')
-    
-    # Initialize empty dataframes
-    all_fin_service_list = []
-    all_national_list = []
-    billing_list = []
-    production_list = []
-    s_access_list = []
-    s_service_list = []
-    w_access_list = []
-    w_service_list = []
-    
-    for country in countries:
-        country_path = base_path / country
-        try:
-            # Load each file type
-            if (country_path / f'all_fin_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_fin_service_{country}.csv')
-                df['country'] = country.capitalize()
-                all_fin_service_list.append(df)
-            
-            if (country_path / f'all_nationalacc_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_nationalacc_{country}.csv')
-                # Ensure country column is properly capitalized (override any existing country column)
-                if 'country' in df.columns:
-                    df = df.drop(columns=['country'])
-                df['country'] = country.capitalize()
-                all_national_list.append(df)
-            
-            if (country_path / f'billing_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'billing_{country}.csv')
-                df['country'] = country.capitalize()
-                billing_list.append(df)
-            
-            if (country_path / f'production_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'production_{country}.csv')
-                # Ensure country column is properly capitalized (override any existing country column)
-                if 'country' in df.columns:
-                    df = df.drop(columns=['country'])
-                df['country'] = country.capitalize()
-                production_list.append(df)
-            
-            if (country_path / f's_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_access_{country}.csv')
-                df['country'] = country.capitalize()
-                s_access_list.append(df)
-            
-            if (country_path / f's_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_service_{country}.csv')
-                df['country'] = country.capitalize()
-                s_service_list.append(df)
-            
-            if (country_path / f'w_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_access_{country}.csv')
-                df['country'] = country.capitalize()
-                w_access_list.append(df)
-            
-            if (country_path / f'w_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_service_{country}.csv')
-                df['country'] = country.capitalize()
-                w_service_list.append(df)
-        except Exception as e:
-            st.warning(f"Error loading data for {country}: {e}")
-    
-    # Concatenate all dataframes
-    data['all_fin_service'] = pd.concat(all_fin_service_list, ignore_index=True) if all_fin_service_list else pd.DataFrame()
-    data['all_national'] = pd.concat(all_national_list, ignore_index=True) if all_national_list else pd.DataFrame()
-    data['billing'] = pd.concat(billing_list, ignore_index=True) if billing_list else pd.DataFrame()
-    data['production'] = pd.concat(production_list, ignore_index=True) if production_list else pd.DataFrame()
-    data['s_access'] = pd.concat(s_access_list, ignore_index=True) if s_access_list else pd.DataFrame()
-    data['s_service'] = pd.concat(s_service_list, ignore_index=True) if s_service_list else pd.DataFrame()
-    data['w_access'] = pd.concat(w_access_list, ignore_index=True) if w_access_list else pd.DataFrame()
-    data['w_service'] = pd.concat(w_service_list, ignore_index=True) if w_service_list else pd.DataFrame()
-    
-    return data
-
 def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
     """Create a line chart with labels"""
     st.subheader(chart_label)
@@ -128,41 +47,14 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=N
     
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
 
-# --- Load Data with Caching ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_all_data():
-    """Load all data with caching"""
-    try:
-        # Try loading from Excel first
-        if os.path.exists('Raw_Data/Master_Data.xlsx'):
-            with st.spinner('Loading data from Excel...'):
-                return {
-                    'all_fin_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_fin_service'),
-                    'all_national': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_national'),
-                    'billing': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='billing'),
-                    'production': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='production'),
-                    's_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_access'),
-                    's_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_service'),
-                    'w_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_access'),
-                    'w_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_service')
-                }
-        else:
-            raise FileNotFoundError("Excel file not found, loading from CSV files")
-    except:
-        # Load from CSV files
-        with st.spinner('Loading data from CSV files...'):
-            return load_data_from_csv()
+# --- Import centralized data loader ---
+from utils.data_loader import load_table
 
-# Load data once with caching
-data_dict = load_all_data()
-all_fin_service_df = data_dict['all_fin_service']
-all_national_df = data_dict['all_national']
-billing_df = data_dict['billing']
-production_df = data_dict['production']
-s_access_df = data_dict['s_access']
-s_service_df = data_dict['s_service']
-w_access_df = data_dict['w_access']
-w_service_df = data_dict['w_service']
+# Load only the data needed for this page (lazy loading)
+with st.spinner('Loading water data...'):
+    all_fin_service_df = load_table('all_fin_service')
+    w_service_df = load_table('w_service')
+    w_access_df = load_table('w_access')
 
 # --- External Filter ---
 filter_col = 'country'
