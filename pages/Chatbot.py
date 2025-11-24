@@ -1,42 +1,20 @@
 import streamlit as st
-from utils.data_loader import get_data_lazy
+from utils.data_loader import load_all_data
 from utils import chatbot
 import os
 
 st.set_page_config(page_title="Data Chatbot", layout="wide")
 st.title("🤖 Chat with the Dashboard Data")
 
-# Check if index exists
-index_exists = chatbot.INDEX_DIR.exists() and all([
-    (chatbot.INDEX_DIR / 'docs.pkl').exists(),
-    (chatbot.INDEX_DIR / 'vectorizer.pkl').exists(),
-    (chatbot.INDEX_DIR / 'matrix.npz').exists()
-])
-
 with st.sidebar:
     st.header("Chat Settings")
     api_key_input = st.text_input("Google API Key (optional, or set GOOGLE_API_KEY env)", type='password')
     top_k = st.slider("Retriever: top K documents", min_value=1, max_value=10, value=4)
-    
-    if not index_exists:
-        st.warning("⚠️ Chat index not built yet. Click below to build it.")
-    else:
-        st.success("✅ Chat index ready")
-    
-    if st.button("Rebuild chat index" + (" (required)" if not index_exists else " (may take time)")):
+    if st.button("Rebuild chat index (may take time)"):
         with st.spinner("Loading data and building index..."):
-            # Use lazy loading - only load when building index
-            dfs = {}
-            lazy_data = get_data_lazy()
-            for key in lazy_data.keys():
-                dfs[key] = lazy_data[key]
+            dfs = load_all_data()
             info = chatbot.build_index_from_dataframes(dfs, persist=True)
         st.success(f"Index built: {info.get('n_docs', 0)} documents")
-        st.rerun()
-
-if not index_exists:
-    st.info("👆 Please build the chat index first using the button in the sidebar.")
-    st.stop()
 
 if 'history' not in st.session_state:
     st.session_state.history = []  # list of dicts: {'q','answer','insight','sources'}

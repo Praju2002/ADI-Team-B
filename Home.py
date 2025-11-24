@@ -138,8 +138,11 @@ filter_col = 'country'
 
 st.sidebar.header("🌍 Filter Options")
 
-# Get unique countries using cached function
-available_countries = get_country_list('w_access')
+# Get unique countries
+if not w_access_df.empty and filter_col in w_access_df.columns:
+    available_countries = sorted(w_access_df[filter_col].unique())
+else:
+    available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
 selected_values = st.sidebar.multiselect(
     f"Select Country/Countries", 

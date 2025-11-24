@@ -971,6 +971,200 @@ def display_overview_tab(filtered_data, analyzer):
         )
     
     # Country Performance Comparison
+    st.markdown("---")
+    
+    # ===========================
+    # BUDGET MANAGEMENT & ALLOCATION
+    # ===========================
+    st.markdown("### 💰 Budget Management & Resource Allocation")
+    
+    df_national = filtered_data.get('national_accounts', pd.DataFrame())
+    
+    if not df_national.empty and 'budget_allocated' in df_national.columns:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Budget Variance (Indicator #34)
+            st.markdown("#### Budget Variance")
+            if 'opex' in df.columns and 'date' in df_national.columns and 'date' in df.columns and 'country' in df.columns:
+                try:
+                    # Convert date columns to same format for merging
+                    df_merge = df.copy()
+                    df_nat_merge = df_national.copy()
+                    
+                    # Ensure date columns are datetime
+                    df_merge['date'] = pd.to_datetime(df_merge['date'], errors='coerce')
+                    df_nat_merge['date'] = pd.to_datetime(df_nat_merge['date'], errors='coerce')
+                    
+                    # Extract year for matching (national accounts is annual)
+                    df_merge['year'] = df_merge['date'].dt.year
+                    df_nat_merge['year'] = df_nat_merge['date'].dt.year
+                    
+                    # Merge on year and country
+                    merged_budget = df_merge.merge(
+                        df_nat_merge[['year', 'country', 'budget_allocated']],
+                        on=['year', 'country'],
+                        how='left'
+                    )
+                    
+                    # Calculate budget variance - filter out zeros
+                    merged_budget['actual_expenditure'] = pd.to_numeric(merged_budget['opex'], errors='coerce')
+                    merged_budget['budget_allocated'] = pd.to_numeric(merged_budget['budget_allocated'], errors='coerce')
+                    
+                    # Filter valid records
+                    valid_budget = merged_budget[
+                        (merged_budget['budget_allocated'].notna()) & 
+                        (merged_budget['budget_allocated'] > 0) &
+                        (merged_budget['actual_expenditure'].notna()) &
+                        (merged_budget['actual_expenditure'] > 0)
+                    ].copy()
+                    
+                    if len(valid_budget) > 0:
+                        # Aggregate by year since budget is annual
+                        annual_budget = valid_budget.groupby('year').agg({
+                            'budget_allocated': 'first',  # Budget is same for all months in year
+                            'actual_expenditure': 'sum'   # Sum monthly opex
+                        }).reset_index()
+                        
+                        total_allocated = annual_budget['budget_allocated'].sum()
+                        total_spent = annual_budget['actual_expenditure'].sum()
+                        variance = total_allocated - total_spent
+                        variance_pct = (variance / total_allocated * 100) if total_allocated > 0 else 0
+                        
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.metric("Total Allocated", format_currency(total_allocated))
+                        with col_b:
+                            delta_color = "normal" if variance >= 0 else "inverse"
+                            st.metric("Variance", format_currency(variance), delta=f"{variance_pct:.1f}%", delta_color=delta_color)
+                        
+                        # Budget variance trend by year
+                        if len(annual_budget) > 0:
+                            annual_budget['variance_pct'] = ((annual_budget['budget_allocated'] - annual_budget['actual_expenditure']) / annual_budget['budget_allocated']) * 100
+                            
+                            fig = go.Figure()
+                            fig.add_trace(go.Bar(
+                                x=annual_budget['year'],
+                                y=annual_budget['budget_allocated'],
+                                name='Allocated',
+                                marker_color='#3498db'
+                            ))
+                            fig.add_trace(go.Bar(
+                                x=annual_budget['year'],
+                                y=annual_budget['actual_expenditure'],
+                                name='Spent (OpEx)',
+                                marker_color='#e74c3c'
+                            ))
+                            fig.update_layout(
+                                title="Budget: Allocated vs Spent (Indicator #34)",
+                                xaxis_title="Year",
+                                yaxis_title="Amount ($)",
+                                height=300,
+                                barmode='group',
+                                hovermode='x unified'
+                            )
+                            st.plotly_chart(fig, use_container_width=True, key="budget_variance_trend")
+                    else:
+                        st.info("💡 Budget variance requires annual budget data and monthly OpEx data. Check if both are available for the selected period.")
+                except Exception as e:
+                    st.warning(f"Unable to calculate budget variance: {str(e)}")
+            else:
+                st.info("📊 Budget variance requires 'opex', 'date', and 'country' columns in both datasets.")
+        
+        with col2:
+            # Budget Allocation Split (Indicators #39, #40)
+            st.markdown("#### Budget Allocation: Sanitation vs Water")
+            if 'san_allocation' in df_national.columns and 'wat_allocation' in df_national.columns:
+                # Filter valid allocation data (non-zero, non-null)
+                valid_san = df_national['san_allocation'].replace(0, pd.NA).dropna()
+                valid_wat = df_national['wat_allocation'].replace(0, pd.NA).dropna()
+                
+                if len(valid_san) > 0 and len(valid_wat) > 0:
+                    avg_san = valid_san.mean()
+                    avg_wat = valid_wat.mean()
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.metric("Sanitation Allocation", f"{avg_san:.1f}%", help="Indicator #40")
+                    with col_b:
+                        st.metric("Water Allocation", f"{avg_wat:.1f}%", help="Indicator #39")
+                    
+                    fig = go.Figure(data=[go.Pie(
+                        labels=['Sanitation', 'Water', 'Other'],
+                        values=[avg_san, avg_wat, max(0, 100 - avg_san - avg_wat)],
+                        marker=dict(colors=['#e74c3c', '#3498db', '#95a5a6']),
+                        hole=0.4
+                    )])
+                    fig.update_layout(
+                        title="Budget Allocation Split",
+                        height=300,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key="budget_allocation_pie")
+                else:
+                    st.info("Budget allocation data not available for selected filters")
+            else:
+                st.info("Budget allocation columns not found in data")
+    
+    # ===========================
+    # HUMAN CAPITAL DEVELOPMENT
+    # ===========================
+    st.markdown("---")
+    st.markdown("### 👥 Human Capital & Training Investment")
+    st.caption("Available for: Cameroon, Lesotho, Malawi, Uganda")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Training Investment (Indicator #51)
+        if not df_national.empty and 'staff_training_budget' in df_national.columns and 'budget_allocated' in df_national.columns:
+            # Filter valid data
+            valid_nat = df_national[
+                (df_national['staff_training_budget'].notna()) &
+                (df_national['staff_training_budget'] > 0) &
+                (df_national['budget_allocated'].notna()) &
+                (df_national['budget_allocated'] > 0)
+            ].copy()
+            
+            if len(valid_nat) > 0:
+                total_training = valid_nat['staff_training_budget'].sum()
+                total_budget = valid_nat['budget_allocated'].sum()
+                training_pct = (total_training / total_budget * 100) if total_budget > 0 else 0
+                
+                if training_pct > 0:
+                    delta_color = "normal" if training_pct >= 5 else "inverse"
+                    st.metric(
+                        "Training Investment %",
+                        f"{training_pct:.2f}%",
+                        delta=f"Target: >5%",
+                        delta_color=delta_color,
+                        help="Indicator #51: % of WASH budget invested in training"
+                    )
+                else:
+                    st.info("Training budget data not available")
+            else:
+                st.info("Training budget data not available for selected filters")
+        else:
+            st.info("Training budget columns not found")
+    
+    with col2:
+        # Trained Staff Count (Indicator #52)
+        if not df_national.empty and 'trained_staff' in df_national.columns:
+            valid_trained = df_national['trained_staff'].replace(0, pd.NA).dropna()
+            
+            if len(valid_trained) > 0:
+                total_trained = valid_trained.sum()
+                st.metric(
+                    "Trained Staff Count",
+                    f"{total_trained:,.0f}",
+                    help="Indicator #52: Total trained personnel"
+                )
+            else:
+                st.info("Trained staff data not available")
+        else:
+            st.info("Trained staff column not found")
+    
+    st.markdown("---")
     st.markdown("### Country Performance Comparison")
     
     # Country color palette inspired by flags

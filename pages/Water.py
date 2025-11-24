@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 import os
 from pathlib import Path
 
@@ -37,6 +39,9 @@ def load_data_from_csv():
             
             if (country_path / f'all_nationalacc_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'all_nationalacc_{country}.csv')
+                # Ensure country column is properly capitalized (override any existing country column)
+                if 'country' in df.columns:
+                    df = df.drop(columns=['country'])
                 df['country'] = country.capitalize()
                 all_national_list.append(df)
             
@@ -47,6 +52,9 @@ def load_data_from_csv():
             
             if (country_path / f'production_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'production_{country}.csv')
+                # Ensure country column is properly capitalized (override any existing country column)
+                if 'country' in df.columns:
+                    df = df.drop(columns=['country'])
                 df['country'] = country.capitalize()
                 production_list.append(df)
             
@@ -180,45 +188,10 @@ st.sidebar.info("💡 Select countries to filter all water service metrics.")
 
 # KPI 1: Continuity of Supply
 st.markdown("### 🚰 Service Quality")
-col1, col2 = st.columns(2)
+col1 = st.columns(1)[0]
+
 
 with col1:
-    df = production_df.copy()
-    if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
-        
-        # Calculate average - handle NaN values
-        if 'service_hours' in df_filtered.columns:
-            # Drop NaN values before calculating mean
-            valid_data = df_filtered['service_hours'].dropna()
-            
-            if len(valid_data) > 0:
-                avg_value = valid_data.mean()
-                st.metric(
-                    label="Continuity of Supply",
-                    value=f"{avg_value:.1f} hrs/day",
-                    help="Average hours of water service per day - Category: Service Quality"
-                )
-                
-                # Chart
-                x_col = 'date' if 'date' in df_filtered.columns else 'date_YY'
-                if x_col in df_filtered.columns:
-                    plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='service_hours', 
-                        chart_label="Continuity of Supply",
-                        unit="(hours/day)",
-                        color_col='country'
-                    )
-            else:
-                st.warning("No valid service hours data available for selected countries")
-        else:
-            st.warning("Service hours data not available in production data")
-    else:
-        st.warning("Production data not available or missing country column")
-
-with col2:
     # KPI 2: Drinking Water Quality Compliance
     df = w_service_df.copy()
     if not df.empty and filter_col in df.columns:
@@ -381,7 +354,7 @@ with col4:
         else:
             st.warning("Financial data not fully available")
 
-st.markdown("---")
+
 st.markdown("""
 ### 📋 Water Service Dashboard Summary
 This dashboard provides detailed water service performance metrics:
@@ -389,6 +362,8 @@ This dashboard provides detailed water service performance metrics:
 - **Service Quality**: Continuity of supply and drinking water quality compliance
 - **Efficiency & Billing**: Metering ratio showing extent of water consumption measurement
 - **Financial Sustainability**: Operating cost coverage showing revenue vs operational expenses
+- **Water Stress**: Production level as percentage of available water resources
 
 Use the sidebar to filter by country and explore detailed trends over time.
 """)
+

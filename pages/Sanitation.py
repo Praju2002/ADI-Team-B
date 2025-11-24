@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 import os
 from pathlib import Path
 
@@ -307,6 +309,92 @@ if not df.empty and filter_col in df.columns:
             st.warning("No valid complaint resolution data available")
     else:
         st.warning("Complaint resolution data not available")
+
+st.markdown("---")
+
+# ===========================
+# NETWORK EFFICIENCY
+# ===========================
+st.markdown("### 🔧 Network Maintenance & Efficiency")
+st.caption("📊 Data Availability: Cameroon, Lesotho, Malawi, Uganda")
+
+df_service = all_fin_service_df.copy()
+if not df_service.empty and filter_col in df_service.columns:
+    df_filtered = df_service[df_service[filter_col].isin(selected_values)]
+    
+    if 'blocks' in df_filtered.columns and 'sewer_length' in df_filtered.columns:
+        # Filter valid data (non-zero, non-null)
+        valid_network = df_filtered[
+            (df_filtered['blocks'].notna()) &
+            (df_filtered['blocks'] > 0) &
+            (df_filtered['sewer_length'].notna()) &
+            (df_filtered['sewer_length'] > 0)
+        ].copy()
+        
+        if len(valid_network) > 0:
+            # Calculate blockages per km (Indicator #29)
+            valid_network['blockages_per_km'] = valid_network['blocks'] / valid_network['sewer_length']
+            
+            avg_blockages = valid_network['blockages_per_km'].mean()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                delta_color = "normal" if avg_blockages < 2 else "inverse"
+                st.metric(
+                    "Blockages per km",
+                    f"{avg_blockages:.2f}",
+                    delta=f"Target: <2",
+                    delta_color=delta_color,
+                    help="Indicator #29: Network maintenance efficiency"
+                )
+            
+            with col2:
+                total_blocks = valid_network['blocks'].sum()
+                st.metric("Total Blockages", f"{total_blocks:,.0f}")
+            
+            with col3:
+                total_length = valid_network['sewer_length'].sum()
+                st.metric("Total Sewer Length", f"{total_length:,.1f} km")
+            
+            # Blockages trend
+            if 'date' in valid_network.columns and len(valid_network) > 1:
+                blockage_trend = valid_network.groupby('date').agg({
+                    'blocks': 'sum',
+                    'sewer_length': 'sum'
+                }).reset_index()
+                
+                # Filter out zero length records
+                blockage_trend = blockage_trend[blockage_trend['sewer_length'] > 0].copy()
+                
+                if len(blockage_trend) > 0:
+                    blockage_trend['blockages_per_km'] = blockage_trend['blocks'] / blockage_trend['sewer_length']
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=blockage_trend['date'],
+                        y=blockage_trend['blockages_per_km'],
+                        mode='lines+markers',
+                        line=dict(color='#e74c3c', width=2),
+                        marker=dict(size=8)
+                    ))
+                    
+                    # Add target line
+                    fig.add_hline(y=2, line_dash="dash", line_color="green", annotation_text="Target: 2 blocks/km")
+                    
+                    fig.update_layout(
+                        title="Blockages per km Over Time (Indicator #29)",
+                        xaxis_title="Date",
+                        yaxis_title="Blockages per km",
+                        height=350,
+                        hovermode='x unified'
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key="blockages_trend")
+        else:
+            st.info("📄 Blockage data not available for selected filters (requires non-zero values)")
+    else:
+        st.info("📄 Blockages or sewer length columns not found in data")
+else:
+    st.info("📄 Finance data required for network efficiency calculation")
 
 st.markdown("---")
 st.markdown("### 💩 Fecal Sludge Management")
