@@ -24,6 +24,7 @@ import numpy as np
 import scipy.sparse as sps
 import pandas as pd
 import requests
+import json
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
@@ -120,12 +121,31 @@ def get_top_docs(query: str, top_k: int = 4) -> List[Dict[str, Any]]:
     return results
 
 
-def _build_prompt(query: str, docs: List[Dict[str, Any]]) -> str:
+def _build_prompt(query: str, docs: List[Dict[str, Any]], include_graph: bool = False, table_schemas: Dict[str, List[str]] = None) -> str:
     """Compose a prompt for the LLM that includes retrieved contexts and the user query."""
     header = (
         "You are a helpful assistant that answers questions about the dataset. "
-        "When you use facts from the provided context, cite the source in brackets like [table:row_index].\n\n"
+        "When you use facts from the provided context, cite the source in brackets like [table:row_index].\n"
     )
+    if include_graph:
+        schema_info = "\n".join([f"- {table}: {cols}" for table, cols in table_schemas.items()]) if table_schemas else "No schema available."
+        header += (
+            "The user has requested a visualization. You can generate a graph by writing a Python code snippet.\n"
+            "Wrap the code in ```python:graph\n...\n```.\n"
+            "The code MUST use `plotly.express` as `px`.\n"
+            f"Assume a dictionary `dfs` is available containing dataframes. \n"
+            f"Available tables and their columns:\n{schema_info}\n"
+            "The code must assign the figure to a variable named `fig`.\n"
+            "Do not use `fig.show()`, just create the `fig` object.\n"
+            "IMPORTANT: The datasets are large. You MUST aggregate the data (e.g., using `groupby().sum()` or `mean()`) before plotting. DO NOT plot raw dataframes directly.\n"
+            "Example:\n"
+            "```python:graph\n"
+            "df_agg = dfs['table_name'].groupby('col1')['col2'].sum().reset_index()\n"
+            "fig = px.bar(df_agg, x='col1', y='col2', title='My Graph')\n"
+            "```\n"
+            "After the code block, provide a clear and detailed explanation of what the graph visualizes. Explain what the x and y axes represent, and highlight any key trends, outliers, or insights visible in the data.\n\n"
+        )
+
     context_blocks = []
     for i, d in enumerate(docs, start=1):
         meta = d.get('meta', {})
@@ -154,7 +174,10 @@ def call_google_bison(prompt: str, api_key: Optional[str] = None, max_output_tok
     }
     try:
         resp = requests.post(url, json=body, timeout=30)
-        resp.raise_for_status()
+        # don't raise immediately, we want to capture body on errors
+        if resp.status_code >= 400:
+            # return helpful debug info without leaking the key
+            return f"[Generative API error: {resp.status_code} {resp.text}]"
         data = resp.json()
         # persist raw response for debugging (no API key saved)
         try:
@@ -195,14 +218,117 @@ def call_google_bison(prompt: str, api_key: Optional[str] = None, max_output_tok
         return f"[LLM call failed: {e}]"
 
 
-def answer_query(query: str, top_k: int = 4, api_key: Optional[str] = None) -> Dict[str, Any]:
+def call_openai(prompt: str, api_key: Optional[str] = None, max_output_tokens: int = 512, temperature: float = 0.0) -> str:
+    """Call OpenAI Chat Completions (gpt-3.5-turbo) using an API key.
+
+    This uses the REST API and expects an API key starting with 'sk-'.
+    """
+    key = api_key or os.environ.get('OPENAI_API_KEY') or os.environ.get('OPENAI_KEY')
+    if not key:
+        raise RuntimeError('OpenAI API key not set. Provide OPENAI_API_KEY env var or pass api_key')
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {key}'
+    }
+    body = {
+        'model': 'gpt-3.5-turbo',
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant that answers questions about tabular datasets. Cite sources in brackets like [table:row_index].'},
+            {'role': 'user', 'content': prompt},
+        ],
+        'max_tokens': max_output_tokens,
+        'temperature': temperature,
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=body, timeout=30)
+        if resp.status_code >= 400:
+            return f"[OpenAI API error: {resp.status_code} {resp.text}]"
+        data = resp.json()
+        # extract text
+        choices = data.get('choices')
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            # chat completions: message -> content
+            msg = first.get('message') or {}
+            content = msg.get('content') or first.get('text')
+            if content:
+                return content
+        # fallback
+        return json.dumps(data)
+    except Exception as e:
+        return f"[OpenAI call failed: {e}]"
+
+
+def call_groq(prompt: str, api_key: Optional[str] = None, max_output_tokens: int = 512, temperature: float = 0.0) -> str:
+    """Call Groq API (llama3-70b-8192) using an API key.
+
+    This uses the REST API and expects an API key starting with 'gsk_'.
+    """
+    key = api_key or os.environ.get('GROQ_API_KEY')
+    if not key:
+        raise RuntimeError('Groq API key not set. Provide GROQ_API_KEY env var or pass api_key')
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {key}'
+    }
+    body = {
+        'model': 'llama-3.3-70b-versatile',
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant that answers questions about tabular datasets. Cite sources in brackets like [table:row_index].'},
+            {'role': 'user', 'content': prompt},
+        ],
+        'max_tokens': max_output_tokens,
+        'temperature': temperature,
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=body, timeout=30)
+        if resp.status_code >= 400:
+            return f"[Groq API error: {resp.status_code} {resp.text}]"
+        data = resp.json()
+        # extract text
+        choices = data.get('choices')
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            # chat completions: message -> content
+            msg = first.get('message') or {}
+            content = msg.get('content') or first.get('text')
+            if content:
+                return content
+        # fallback
+        return json.dumps(data)
+    except Exception as e:
+        return f"[Groq call failed: {e}]"
+
+
+def answer_query(query: str, top_k: int = 4, api_key: Optional[str] = None, include_graph: bool = False, table_schemas: Dict[str, List[str]] = None) -> Dict[str, Any]:
     """Retrieve supporting docs and ask the LLM for an answer.
 
     Returns: {'answer': str, 'sources': [{'meta','score','text'}]}
     """
     docs = get_top_docs(query, top_k=top_k)
-    prompt = _build_prompt(query, docs)
-    resp = call_google_bison(prompt, api_key=api_key)
+    prompt = _build_prompt(query, docs, include_graph=include_graph, table_schemas=table_schemas)
+    # Choose backend by key type: OpenAI keys usually start with 'sk-', Groq keys start with 'gsk_'
+    resp = None
+    if api_key and str(api_key).startswith('sk-'):
+        resp = call_openai(prompt, api_key=api_key)
+    elif (api_key and str(api_key).startswith('gsk_')) or os.environ.get('GROQ_API_KEY'):
+        # Prefer Groq if key provided or in env
+        # If api_key is passed and it's not gsk, but we have GROQ_API_KEY in env, we might default to Groq?
+        # The logic below: if explicit api_key is gsk, use Groq.
+        # If no explicit api_key, check env for GROQ_API_KEY.
+        effective_key = api_key if (api_key and str(api_key).startswith('gsk_')) else os.environ.get('GROQ_API_KEY')
+        if effective_key:
+             resp = call_groq(prompt, api_key=effective_key)
+        else:
+             # default to Google Generative API
+             resp = call_google_bison(prompt, api_key=api_key)
+    else:
+        # default to Google Generative API
+        resp = call_google_bison(prompt, api_key=api_key)
     # Also compute a deterministic insight summary from the retrieved docs so UI can show
     insight = summarize_docs_insights(docs)
     return {'answer': resp, 'sources': docs, 'insight': insight}
