@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 import os
 from pathlib import Path
 
@@ -9,81 +11,6 @@ st.set_page_config(page_title="Sanitation Service Dashboard", page_icon="🚽", 
 st.title("🚽 Sanitation Service Dashboard")
 
 # --- Helper Functions ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_data_from_csv():
-    """Load data from individual CSV files"""
-    data = {}
-    countries = ['cameroon', 'lesotho', 'malawi', 'uganda']
-    base_path = Path('Raw_Data')
-    
-    # Initialize empty dataframes
-    all_fin_service_list = []
-    all_national_list = []
-    billing_list = []
-    production_list = []
-    s_access_list = []
-    s_service_list = []
-    w_access_list = []
-    w_service_list = []
-    
-    for country in countries:
-        country_path = base_path / country
-        try:
-            # Load each file type
-            if (country_path / f'all_fin_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_fin_service_{country}.csv')
-                df['country'] = country.capitalize()
-                all_fin_service_list.append(df)
-            
-            if (country_path / f'all_nationalacc_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'all_nationalacc_{country}.csv')
-                df['country'] = country.capitalize()
-                all_national_list.append(df)
-            
-            if (country_path / f'billing_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'billing_{country}.csv')
-                df['country'] = country.capitalize()
-                billing_list.append(df)
-            
-            if (country_path / f'production_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'production_{country}.csv')
-                df['country'] = country.capitalize()
-                production_list.append(df)
-            
-            if (country_path / f's_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_access_{country}.csv')
-                df['country'] = country.capitalize()
-                s_access_list.append(df)
-            
-            if (country_path / f's_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f's_service_{country}.csv')
-                df['country'] = country.capitalize()
-                s_service_list.append(df)
-            
-            if (country_path / f'w_access_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_access_{country}.csv')
-                df['country'] = country.capitalize()
-                w_access_list.append(df)
-            
-            if (country_path / f'w_service_{country}.csv').exists():
-                df = pd.read_csv(country_path / f'w_service_{country}.csv')
-                df['country'] = country.capitalize()
-                w_service_list.append(df)
-        except Exception as e:
-            st.warning(f"Error loading data for {country}: {e}")
-    
-    # Concatenate all dataframes
-    data['all_fin_service'] = pd.concat(all_fin_service_list, ignore_index=True) if all_fin_service_list else pd.DataFrame()
-    data['all_national'] = pd.concat(all_national_list, ignore_index=True) if all_national_list else pd.DataFrame()
-    data['billing'] = pd.concat(billing_list, ignore_index=True) if billing_list else pd.DataFrame()
-    data['production'] = pd.concat(production_list, ignore_index=True) if production_list else pd.DataFrame()
-    data['s_access'] = pd.concat(s_access_list, ignore_index=True) if s_access_list else pd.DataFrame()
-    data['s_service'] = pd.concat(s_service_list, ignore_index=True) if s_service_list else pd.DataFrame()
-    data['w_access'] = pd.concat(w_access_list, ignore_index=True) if w_access_list else pd.DataFrame()
-    data['w_service'] = pd.concat(w_service_list, ignore_index=True) if w_service_list else pd.DataFrame()
-    
-    return data
-
 def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
     """Create a line chart with labels"""
     st.subheader(chart_label)
@@ -120,63 +47,101 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=N
     
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
 
-# --- Load Data with Caching ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_all_data():
-    """Load all data with caching"""
-    try:
-        # Try loading from Excel first
-        if os.path.exists('Raw_Data/Master_Data.xlsx'):
-            with st.spinner('Loading data from Excel...'):
-                return {
-                    'all_fin_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_fin_service'),
-                    'all_national': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='all_national'),
-                    'billing': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='billing'),
-                    'production': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='production'),
-                    's_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_access'),
-                    's_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='s_service'),
-                    'w_access': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_access'),
-                    'w_service': pd.read_excel('Raw_Data/Master_Data.xlsx', sheet_name='w_service')
-                }
-        else:
-            raise FileNotFoundError("Excel file not found, loading from CSV files")
-    except:
-        # Load from CSV files
-        with st.spinner('Loading data from CSV files...'):
-            return load_data_from_csv()
+# --- Import centralized data loader ---
+from utils.data_loader import load_table
 
-# Load data once with caching
-data_dict = load_all_data()
-all_fin_service_df = data_dict['all_fin_service']
-all_national_df = data_dict['all_national']
-billing_df = data_dict['billing']
-production_df = data_dict['production']
-s_access_df = data_dict['s_access']
-s_service_df = data_dict['s_service']
-w_access_df = data_dict['w_access']
-w_service_df = data_dict['w_service']
+# Load only the data needed for this page (lazy loading)
+with st.spinner('Loading sanitation data...'):
+    all_fin_service_df = load_table('all_fin_service')
+    s_service_df = load_table('s_service')
 
 # --- External Filter ---
 filter_col = 'country'
 
-st.sidebar.header("🌍 Filter Options")
+st.sidebar.header("🔍 Filter Options")
 
 # Get unique countries
 if not s_service_df.empty and filter_col in s_service_df.columns:
     available_countries = sorted(s_service_df[filter_col].unique())
-elif not w_access_df.empty and filter_col in w_access_df.columns:
-    available_countries = sorted(w_access_df[filter_col].unique())
+elif not all_fin_service_df.empty and filter_col in all_fin_service_df.columns:
+    available_countries = sorted(all_fin_service_df[filter_col].unique())
 else:
     available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
 selected_values = st.sidebar.multiselect(
-    f"Select Country/Countries", 
+    "Select Countries", 
     options=available_countries,
-    default=available_countries
+    default=available_countries,
+    help="Filter data by one or more countries"
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 Select countries to filter all sanitation service metrics.")
+
+# Date filtering with quick period selection
+date_min = None
+date_max = None
+date_col = None
+
+for df in [s_service_df, all_fin_service_df]:
+    if not df.empty:
+        # Check for date columns
+        if 'date' in df.columns:
+            date_col = 'date'
+        elif 'date_MMYY' in df.columns:
+            date_col = 'date_MMYY'
+        
+        if date_col and date_col in df.columns:
+            try:
+                df_date_min = pd.to_datetime(df[date_col], errors='coerce').min()
+                df_date_max = pd.to_datetime(df[date_col], errors='coerce').max()
+                if pd.notna(df_date_min) and pd.notna(df_date_max):
+                    if date_min is None or df_date_min < date_min:
+                        date_min = df_date_min
+                    if date_max is None or df_date_max > date_max:
+                        date_max = df_date_max
+            except:
+                pass
+
+if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
+    st.sidebar.markdown("### 📅 Time Period")
+    period_option = st.sidebar.radio(
+        "Select Period:",
+        ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
+        index=0,
+        help="Choose a time period to analyze"
+    )
+    
+    if period_option == "Last 12 Months":
+        date_range = (date_max - pd.DateOffset(months=12), date_max)
+    elif period_option == "Last 6 Months":
+        date_range = (date_max - pd.DateOffset(months=6), date_max)
+    elif period_option == "Custom Range":
+        date_range = st.sidebar.date_input("Select Date Range:", value=(date_min, date_max))
+    else:
+        date_range = (date_min, date_max)
+    
+    # Apply date filtering to dataframes
+    if date_range and len(date_range) == 2:
+        start = pd.to_datetime(date_range[0]) if not isinstance(date_range[0], pd.Timestamp) else date_range[0]
+        end = pd.to_datetime(date_range[1]) if not isinstance(date_range[1], pd.Timestamp) else date_range[1]
+        
+        if not s_service_df.empty:
+            dc = 'date' if 'date' in s_service_df.columns else 'date_MMYY' if 'date_MMYY' in s_service_df.columns else None
+            if dc:
+                try:
+                    s_service_df[dc] = pd.to_datetime(s_service_df[dc], errors='coerce')
+                    s_service_df = s_service_df[(s_service_df[dc] >= start) & (s_service_df[dc] <= end)]
+                except:
+                    pass
+        
+        if not all_fin_service_df.empty:
+            dc = 'date' if 'date' in all_fin_service_df.columns else 'date_MMYY' if 'date_MMYY' in all_fin_service_df.columns else None
+            if dc:
+                try:
+                    all_fin_service_df[dc] = pd.to_datetime(all_fin_service_df[dc], errors='coerce')
+                    all_fin_service_df = all_fin_service_df[(all_fin_service_df[dc] >= start) & (all_fin_service_df[dc] <= end)]
+                except:
+                    pass
 
 # --- Main Dashboard ---
 
@@ -307,6 +272,92 @@ if not df.empty and filter_col in df.columns:
             st.warning("No valid complaint resolution data available")
     else:
         st.warning("Complaint resolution data not available")
+
+st.markdown("---")
+
+# ===========================
+# NETWORK EFFICIENCY
+# ===========================
+st.markdown("### 🔧 Network Maintenance & Efficiency")
+st.caption("📊 Data Availability: Cameroon, Lesotho, Malawi, Uganda")
+
+df_service = all_fin_service_df.copy()
+if not df_service.empty and filter_col in df_service.columns:
+    df_filtered = df_service[df_service[filter_col].isin(selected_values)]
+    
+    if 'blocks' in df_filtered.columns and 'sewer_length' in df_filtered.columns:
+        # Filter valid data (non-zero, non-null)
+        valid_network = df_filtered[
+            (df_filtered['blocks'].notna()) &
+            (df_filtered['blocks'] > 0) &
+            (df_filtered['sewer_length'].notna()) &
+            (df_filtered['sewer_length'] > 0)
+        ].copy()
+        
+        if len(valid_network) > 0:
+            # Calculate blockages per km (Indicator #29)
+            valid_network['blockages_per_km'] = valid_network['blocks'] / valid_network['sewer_length']
+            
+            avg_blockages = valid_network['blockages_per_km'].mean()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                delta_color = "normal" if avg_blockages < 2 else "inverse"
+                st.metric(
+                    "Blockages per km",
+                    f"{avg_blockages:.2f}",
+                    delta=f"Target: <2",
+                    delta_color=delta_color,
+                    help="Indicator #29: Network maintenance efficiency"
+                )
+            
+            with col2:
+                total_blocks = valid_network['blocks'].sum()
+                st.metric("Total Blockages", f"{total_blocks:,.0f}")
+            
+            with col3:
+                total_length = valid_network['sewer_length'].sum()
+                st.metric("Total Sewer Length", f"{total_length:,.1f} km")
+            
+            # Blockages trend
+            if 'date' in valid_network.columns and len(valid_network) > 1:
+                blockage_trend = valid_network.groupby('date').agg({
+                    'blocks': 'sum',
+                    'sewer_length': 'sum'
+                }).reset_index()
+                
+                # Filter out zero length records
+                blockage_trend = blockage_trend[blockage_trend['sewer_length'] > 0].copy()
+                
+                if len(blockage_trend) > 0:
+                    blockage_trend['blockages_per_km'] = blockage_trend['blocks'] / blockage_trend['sewer_length']
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=blockage_trend['date'],
+                        y=blockage_trend['blockages_per_km'],
+                        mode='lines+markers',
+                        line=dict(color='#e74c3c', width=2),
+                        marker=dict(size=8)
+                    ))
+                    
+                    # Add target line
+                    fig.add_hline(y=2, line_dash="dash", line_color="green", annotation_text="Target: 2 blocks/km")
+                    
+                    fig.update_layout(
+                        title="Blockages per km Over Time (Indicator #29)",
+                        xaxis_title="Date",
+                        yaxis_title="Blockages per km",
+                        height=350,
+                        hovermode='x unified'
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key="blockages_trend")
+        else:
+            st.info("📄 Blockage data not available for selected filters (requires non-zero values)")
+    else:
+        st.info("📄 Blockages or sewer length columns not found in data")
+else:
+    st.info("📄 Finance data required for network efficiency calculation")
 
 st.markdown("---")
 st.markdown("### 💩 Fecal Sludge Management")

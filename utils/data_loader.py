@@ -121,6 +121,92 @@ def load_data_from_csv():
 
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
+def load_table(table_name: str):
+    """Load a single table on demand (lazy loading).
+    
+    Args:
+        table_name: One of ['all_fin_service', 'all_national', 'billing', 'production', 
+                           's_access', 's_service', 'w_access', 'w_service']
+    Returns:
+        DataFrame for the requested table
+    """
+    processed_dir = Path('Raw_Data/processed')
+    
+    # Try parquet first (fastest)
+    parquet_file = processed_dir / f"{table_name}.parquet"
+    if _HAS_PARQUET and parquet_file.exists():
+        try:
+            return pd.read_parquet(parquet_file)
+        except Exception:
+            pass
+    
+    # Try Excel (if Master_Data exists)
+    excel_file = Path('Raw_Data/Master_Data.xlsx')
+    if excel_file.exists():
+        try:
+            df = pd.read_excel(excel_file, sheet_name=table_name)
+            if not df.empty:
+                _normalize_dataframe(df)
+                return df
+        except Exception:
+            pass
+    
+    # Fall back to CSV
+    return _load_table_from_csv(table_name)
+
+
+def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize country casing and parse date columns in-place."""
+    if df.empty:
+        return df
+    
+    # Normalize country column
+    if 'country' in df.columns:
+        try:
+            df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+        except Exception:
+            pass
+    
+    # Parse date columns
+    date_cols = [c for c in df.columns if 'date' in str(c).lower()]
+    for c in date_cols:
+        try:
+            df[c] = pd.to_datetime(df[c], errors='coerce')
+        except Exception:
+            pass
+    
+    return df
+
+
+def _load_table_from_csv(table_name: str) -> pd.DataFrame:
+    """Load a single table from CSV files."""
+    countries = ['cameroon', 'lesotho', 'malawi', 'uganda']
+    base_path = Path('Raw_Data')
+    df_list = []
+    
+    for country in countries:
+        country_path = base_path / country
+        file_path = country_path / f"{table_name}_{country}.csv"
+        
+        if not file_path.exists():
+            continue
+        
+        try:
+            df = pd.read_csv(file_path, low_memory=False)
+            df['country'] = country.capitalize()
+            df_list.append(df)
+        except Exception:
+            continue
+    
+    if df_list:
+        result = pd.concat(df_list, ignore_index=True)
+        _normalize_dataframe(result)
+        return result
+    
+    return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_all_data():
     """Load all data with caching - Single source of truth"""
     try:
@@ -352,12 +438,50 @@ def load_all_data():
                 return data
 
 
-def get_country_list(data_dict):
-    """Get list of available countries from loaded data"""
-    for df in data_dict.values():
-        if not df.empty and 'country' in df.columns:
-            return sorted(df['country'].unique())
+def get_country_list(table_name: str = 'w_access'):
+    """Get list of available countries (cached, lazy).
+    
+    Args:
+        table_name: Which table to check for countries (default: w_access as it's commonly used)
+    """
+    df = load_table(table_name)
+    if not df.empty and 'country' in df.columns:
+        return sorted(df['country'].unique())
     return ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+
+
+def get_data_lazy():
+    """Get data dictionary with lazy loading support.
+    
+    Returns a dict-like object that loads tables only when accessed.
+    Use this instead of load_all_data() for better performance.
+    """
+    class LazyDataDict:
+        def __init__(self):
+            self._cache = {}
+        
+        def __getitem__(self, key):
+            if key not in self._cache:
+                self._cache[key] = load_table(key)
+            return self._cache[key]
+        
+        def get(self, key, default=None):
+            try:
+                return self[key]
+            except Exception:
+                return default
+        
+        def keys(self):
+            return ['all_fin_service', 'all_national', 'billing', 'production',
+                    's_access', 's_service', 'w_access', 'w_service']
+        
+        def values(self):
+            return [self[k] for k in self.keys()]
+        
+        def items(self):
+            return [(k, self[k]) for k in self.keys()]
+    
+    return LazyDataDict()
 
 
 def regenerate_processed_cache(verbose: bool = True):

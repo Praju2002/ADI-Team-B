@@ -216,7 +216,7 @@ w_service_df = data_dict['w_service']
 # --- External Filter ---
 filter_col = 'country'
 
-st.sidebar.header("🌍 Filter Options")
+st.sidebar.header("🔍 Filter Options")
 
 # Get unique countries
 if not w_access_df.empty and filter_col in w_access_df.columns:
@@ -225,18 +225,98 @@ else:
     available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
 selected_values = st.sidebar.multiselect(
-    f"Select Country/Countries", 
+    "Select Countries", 
     options=available_countries,
-    default=available_countries
+    default=available_countries,
+    help="Filter data by one or more countries"
 )
 
-# Date filter if available
-if 'date' in w_access_df.columns:
-    st.sidebar.subheader("📅 Date Range")
-    date_range = st.sidebar.date_input("Select Date Range", [])
-
 st.sidebar.markdown("---")
-st.sidebar.info("💡 Select countries to filter all metrics on this page.")
+
+# Date filtering with quick period selection
+date_min = None
+date_max = None
+date_col = None
+
+for df in [w_access_df, s_access_df, all_fin_service_df]:
+    if not df.empty:
+        # Check for date columns
+        if 'date' in df.columns:
+            date_col = 'date'
+        elif 'date_MMYY' in df.columns:
+            date_col = 'date_MMYY'
+        
+        if date_col and date_col in df.columns:
+            try:
+                df_date_min = pd.to_datetime(df[date_col], errors='coerce').min()
+                df_date_max = pd.to_datetime(df[date_col], errors='coerce').max()
+                if pd.notna(df_date_min) and pd.notna(df_date_max):
+                    if date_min is None or df_date_min < date_min:
+                        date_min = df_date_min
+                    if date_max is None or df_date_max > date_max:
+                        date_max = df_date_max
+            except:
+                pass
+
+if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
+    st.sidebar.markdown("### 📅 Time Period")
+    period_option = st.sidebar.radio(
+        "Select Period:",
+        ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
+        index=0,
+        help="Choose a time period to analyze"
+    )
+    
+    if period_option == "Last 12 Months":
+        date_range = (date_max - pd.DateOffset(months=12), date_max)
+    elif period_option == "Last 6 Months":
+        date_range = (date_max - pd.DateOffset(months=6), date_max)
+    elif period_option == "Custom Range":
+        date_range = st.sidebar.date_input("Select Date Range:", value=(date_min, date_max))
+    else:
+        date_range = (date_min, date_max)
+    
+    # Apply date filtering to dataframes
+    if date_range and len(date_range) == 2:
+        start = pd.to_datetime(date_range[0]) if not isinstance(date_range[0], pd.Timestamp) else date_range[0]
+        end = pd.to_datetime(date_range[1]) if not isinstance(date_range[1], pd.Timestamp) else date_range[1]
+        
+        # Filter each dataframe
+        if not w_access_df.empty:
+            dc = 'date' if 'date' in w_access_df.columns else 'date_MMYY' if 'date_MMYY' in w_access_df.columns else None
+            if dc:
+                try:
+                    w_access_df[dc] = pd.to_datetime(w_access_df[dc], errors='coerce')
+                    w_access_df = w_access_df[(w_access_df[dc] >= start) & (w_access_df[dc] <= end)]
+                except:
+                    pass
+        
+        if not s_access_df.empty:
+            dc = 'date' if 'date' in s_access_df.columns else 'date_MMYY' if 'date_MMYY' in s_access_df.columns else None
+            if dc:
+                try:
+                    s_access_df[dc] = pd.to_datetime(s_access_df[dc], errors='coerce')
+                    s_access_df = s_access_df[(s_access_df[dc] >= start) & (s_access_df[dc] <= end)]
+                except:
+                    pass
+        
+        if not w_service_df.empty:
+            dc = 'date' if 'date' in w_service_df.columns else 'date_MMYY' if 'date_MMYY' in w_service_df.columns else None
+            if dc:
+                try:
+                    w_service_df[dc] = pd.to_datetime(w_service_df[dc], errors='coerce')
+                    w_service_df = w_service_df[(w_service_df[dc] >= start) & (w_service_df[dc] <= end)]
+                except:
+                    pass
+        
+        if not all_fin_service_df.empty:
+            dc = 'date' if 'date' in all_fin_service_df.columns else 'date_MMYY' if 'date_MMYY' in all_fin_service_df.columns else None
+            if dc:
+                try:
+                    all_fin_service_df[dc] = pd.to_datetime(all_fin_service_df[dc], errors='coerce')
+                    all_fin_service_df = all_fin_service_df[(all_fin_service_df[dc] >= start) & (all_fin_service_df[dc] <= end)]
+                except:
+                    pass
 
 # --- Main Dashboard ---
 
