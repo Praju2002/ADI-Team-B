@@ -6,9 +6,9 @@ import numpy as np
 import os
 from pathlib import Path
 
-st.set_page_config(page_title="Water Service Dashboard", page_icon="💧", layout="wide")
+st.set_page_config(page_title="Water Service Dashboard", layout="wide")
 
-st.title("💧 Water Service Dashboard")
+st.title("Water Service Dashboard")
 
 # --- Helper Functions ---
 def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
@@ -59,7 +59,7 @@ with st.spinner('Loading water data...'):
 # --- External Filter ---
 filter_col = 'country'
 
-st.sidebar.header("🔍 Filter Options")
+st.sidebar.header("Filter Options")
 
 # Get unique countries
 if not w_access_df.empty and filter_col in w_access_df.columns:
@@ -67,11 +67,26 @@ if not w_access_df.empty and filter_col in w_access_df.columns:
 else:
     available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
-selected_values = st.sidebar.multiselect(
-    "Select Countries", 
+# Single-select dropdown (keep behavior consistent with other pages)
+cleaned = []
+for c in available_countries:
+    try:
+        if pd.isna(c):
+            continue
+    except Exception:
+        pass
+    s = str(c).strip()
+    if s == "" or s.lower() in ("nan", "n/a", "<n/a>", "<na>", "na", "none"):
+        continue
+    cleaned.append(s)
+
+available_countries = sorted(set(cleaned)) if cleaned else ['No countries found']
+
+selected_country = st.sidebar.selectbox(
+    "Select Country",
     options=available_countries,
-    default=available_countries,
-    help="Filter data by one or more countries"
+    index=0,
+    help="Select a country to filter the dashboard (single selection)"
 )
 
 st.sidebar.markdown("---")
@@ -102,7 +117,7 @@ for df in [w_service_df, w_access_df, all_fin_service_df]:
                 pass
 
 if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
-    st.sidebar.markdown("### 📅 Time Period")
+    st.sidebar.markdown("### Time Period")
     period_option = st.sidebar.radio(
         "Select Period:",
         ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
@@ -154,7 +169,7 @@ if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
 # --- Main Dashboard ---
 
 # KPI 1: Continuity of Supply
-st.markdown("### 🚰 Service Quality")
+st.markdown("### Service Quality")
 col1 = st.columns(1)[0]
 
 
@@ -162,7 +177,9 @@ with col1:
     # KPI 2: Drinking Water Quality Compliance
     df = w_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate Water Quality Compliance
         required_cols = ['test_passed_chlorine', 'tests_passed_ecoli', 'tests_conducted_chlorine', 'test_conducted_ecoli']
@@ -220,14 +237,16 @@ with col1:
             st.warning("Water quality testing data not available")
 
 st.markdown("---")
-st.markdown("### 📊 Efficiency & Financial Sustainability")
+st.markdown("### Efficiency & Financial Sustainability")
 col3, col4 = st.columns(2)
 
 with col3:
     # KPI 3: Metering Ratio
     df = w_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate Metering Ratio
         if 'metered' in df_filtered.columns and 'total_consumption' in df_filtered.columns:
@@ -268,7 +287,9 @@ with col4:
     # KPI 4: Operating Cost Coverage
     df = all_fin_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate Operating Cost Coverage
         required_cols = ['sewer_revenue', 'water_revenue', 'opex']
@@ -323,7 +344,7 @@ with col4:
 
 
 st.markdown("""
-### 📋 Water Service Dashboard Summary
+### Water Service Dashboard Summary
 This dashboard provides detailed water service performance metrics:
 
 - **Service Quality**: Continuity of supply and drinking water quality compliance
@@ -333,4 +354,3 @@ This dashboard provides detailed water service performance metrics:
 
 Use the sidebar to filter by country and explore detailed trends over time.
 """)
-

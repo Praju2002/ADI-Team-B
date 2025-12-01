@@ -6,9 +6,12 @@ import os
 from pathlib import Path
 import time
 
-st.set_page_config(page_title="Summary Dashboard", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Summary Dashboard", layout="wide")
 
-st.title("📊 Summary Dashboard - High-Level Overview")
+st.title("Summary Dashboard - High-Level Overview")
+
+# Ensure browser resolves Streamlit runtime assets from root when pages are navigated
+st.markdown("<base href='/' />", unsafe_allow_html=True)
 
 # --- Helper Functions ---
 @st.cache_data(ttl=3600)  # Cache for 1 hour
@@ -120,7 +123,7 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=N
         height=400  # Fixed height for consistency
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
+    st.plotly_chart(fig, width='stretch', key=f"chart_{chart_label}")
 
 
 def _get_processed_mtime():
@@ -216,19 +219,35 @@ w_service_df = data_dict['w_service']
 # --- External Filter ---
 filter_col = 'country'
 
-st.sidebar.header("🔍 Filter Options")
+st.sidebar.header("Filter Options")
 
-# Get unique countries
+# Build cleaned country list and exclude placeholders like NaN, 'n/a', '<n/a>'
+raw_countries = []
 if not w_access_df.empty and filter_col in w_access_df.columns:
-    available_countries = sorted(w_access_df[filter_col].unique())
+    raw_countries = list(w_access_df[filter_col].unique())
 else:
-    available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+    raw_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
-selected_values = st.sidebar.multiselect(
-    "Select Countries", 
+cleaned = []
+for c in raw_countries:
+    try:
+        if pd.isna(c):
+            continue
+    except Exception:
+        pass
+    s = str(c).strip()
+    if s == "" or s.lower() in ("nan", "n/a", "<n/a>", "<na>", "na", "none"):
+        continue
+    cleaned.append(s)
+
+available_countries = sorted(set(cleaned)) if cleaned else ['No countries found']
+
+# Single-select dropdown
+selected_country = st.sidebar.selectbox(
+    "Select Country",
     options=available_countries,
-    default=available_countries,
-    help="Filter data by one or more countries"
+    index=0,
+    help="Select a country to filter the dashboard (single selection)"
 )
 
 st.sidebar.markdown("---")
@@ -259,7 +278,7 @@ for df in [w_access_df, s_access_df, all_fin_service_df]:
                 pass
 
 if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
-    st.sidebar.markdown("### 📅 Time Period")
+    st.sidebar.markdown("### Time Period")
     period_option = st.sidebar.radio(
         "Select Period:",
         ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
@@ -321,13 +340,15 @@ if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
 # --- Main Dashboard ---
 
 # KPI 1: Population with Safely Managed Water
-st.markdown("### 💧 Access Indicators")
+st.markdown("### Access Indicators")
 col1, col2 = st.columns(2)
 
 with col1:
     df = w_access_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate average - handle NaN values
         if 'safely_managed_pct' in df_filtered.columns:
@@ -358,7 +379,9 @@ with col2:
     # KPI 2: Population with Safely Managed Sanitation
     df = s_access_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate average - handle NaN values
         if 'safely_managed_pct' in df_filtered.columns:
@@ -386,14 +409,16 @@ with col2:
                 st.warning("No valid data available for safely managed sanitation")
 
 st.markdown("---")
-st.markdown("### 📈 Efficiency & Financial Sustainability")
+st.markdown("### Efficiency & Financial Sustainability")
 col3, col4 = st.columns(2)
 
 with col3:
     # KPI 3: Non-Revenue Water (NRW)
     df = w_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate NRW
         if 'NRW' not in df_filtered.columns and 'w_supplied' in df_filtered.columns and 'total_consumption' in df_filtered.columns:
@@ -435,7 +460,9 @@ with col4:
     df_bill = billing_df.copy()
     
     if not df_fin.empty and filter_col in df_fin.columns:
-        df_filtered_fin = df_fin[df_fin[filter_col].isin(selected_values)]
+        df_filtered_fin = df_fin.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered_fin = df_filtered_fin[df_filtered_fin[filter_col] == selected_country]
         
         # Calculate Revenue Collection Efficiency
         required_cols = ['sewer_revenue', 'water_revenue', 'sewer_billed', 'water_billed']
@@ -501,7 +528,7 @@ with col4:
 
 st.markdown("---")
 st.markdown("""
-### 📋 Dashboard Summary
+### Dashboard Summary
 This dashboard provides a high-level overview of water and sanitation services across selected countries:
 
 - **Access Indicators**: Population coverage with safely managed water and sanitation

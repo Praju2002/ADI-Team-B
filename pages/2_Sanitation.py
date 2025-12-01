@@ -6,9 +6,12 @@ import numpy as np
 import os
 from pathlib import Path
 
-st.set_page_config(page_title="Sanitation Service Dashboard", page_icon="🚽", layout="wide")
+st.set_page_config(page_title="Sanitation Service Dashboard", layout="wide")
 
-st.title("🚽 Sanitation Service Dashboard")
+st.title("Sanitation Service Dashboard")
+
+# Ensure browser resolves Streamlit runtime assets from root when pages are navigated
+st.markdown("<base href='/' />", unsafe_allow_html=True)
 
 # --- Helper Functions ---
 def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
@@ -58,21 +61,37 @@ with st.spinner('Loading sanitation data...'):
 # --- External Filter ---
 filter_col = 'country'
 
-st.sidebar.header("🔍 Filter Options")
+st.sidebar.header("Filter Options")
 
-# Get unique countries
+# Build cleaned country list and exclude placeholders like NaN, 'n/a', '<n/a>'
+raw_countries = []
 if not s_service_df.empty and filter_col in s_service_df.columns:
-    available_countries = sorted(s_service_df[filter_col].unique())
+    raw_countries = list(s_service_df[filter_col].unique())
 elif not all_fin_service_df.empty and filter_col in all_fin_service_df.columns:
-    available_countries = sorted(all_fin_service_df[filter_col].unique())
+    raw_countries = list(all_fin_service_df[filter_col].unique())
 else:
-    available_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+    raw_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
-selected_values = st.sidebar.multiselect(
-    "Select Countries", 
+cleaned = []
+for c in raw_countries:
+    try:
+        if pd.isna(c):
+            continue
+    except Exception:
+        pass
+    s = str(c).strip()
+    if s == "" or s.lower() in ("nan", "n/a", "<n/a>", "<na>", "na", "none"):
+        continue
+    cleaned.append(s)
+
+available_countries = sorted(set(cleaned)) if cleaned else ['No countries found']
+
+# Single-select dropdown (first country selected by default)
+selected_country = st.sidebar.selectbox(
+    "Select Country",
     options=available_countries,
-    default=available_countries,
-    help="Filter data by one or more countries"
+    index=0,
+    help="Select a country to filter the dashboard (single selection)"
 )
 
 st.sidebar.markdown("---")
@@ -103,7 +122,7 @@ for df in [s_service_df, all_fin_service_df]:
                 pass
 
 if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
-    st.sidebar.markdown("### 📅 Time Period")
+    st.sidebar.markdown("### Time Period")
     period_option = st.sidebar.radio(
         "Select Period:",
         ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
@@ -152,7 +171,9 @@ col1, col2 = st.columns(2)
 with col1:
     df = s_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate Sewer Coverage
         if 'sewer_connections' in df_filtered.columns and 'households' in df_filtered.columns:
@@ -193,7 +214,9 @@ with col2:
     # KPI 2: Wastewater Safely Treated
     df = s_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate Wastewater Treatment Rate
         if 'ww_treated' in df_filtered.columns and 'ww_collected' in df_filtered.columns:
@@ -236,7 +259,9 @@ st.markdown("### 🔧 Service Quality")
 # KPI 3: Customer Complaint Resolution Rate
 df = all_fin_service_df.copy()
 if not df.empty and filter_col in df.columns:
-    df_filtered = df[df[filter_col].isin(selected_values)]
+    df_filtered = df.copy()
+    if selected_country and selected_country != 'No countries found':
+        df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
     
     # Calculate Complaint Resolution Rate
     if 'resolved' in df_filtered.columns and 'complaints' in df_filtered.columns:
@@ -279,11 +304,13 @@ st.markdown("---")
 # NETWORK EFFICIENCY
 # ===========================
 st.markdown("### 🔧 Network Maintenance & Efficiency")
-st.caption("📊 Data Availability: Cameroon, Lesotho, Malawi, Uganda")
+st.caption("Data Availability: Cameroon, Lesotho, Malawi, Uganda")
 
 df_service = all_fin_service_df.copy()
 if not df_service.empty and filter_col in df_service.columns:
-    df_filtered = df_service[df_service[filter_col].isin(selected_values)]
+    df_filtered = df_service.copy()
+    if selected_country and selected_country != 'No countries found':
+        df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
     
     if 'blocks' in df_filtered.columns and 'sewer_length' in df_filtered.columns:
         # Filter valid data (non-zero, non-null)
@@ -360,14 +387,16 @@ else:
     st.info("📄 Finance data required for network efficiency calculation")
 
 st.markdown("---")
-st.markdown("### 💩 Fecal Sludge Management")
+st.markdown("### Fecal Sludge Management")
 col3, col4 = st.columns(2)
 
 with col3:
     # KPI 4a: Fecal Sludge Emptied
     df = s_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate FS Emptied Rate
         if 'hh_emptied' in df_filtered.columns and 'households' in df_filtered.columns and 'sewer_connections' in df_filtered.columns:
@@ -409,7 +438,9 @@ with col4:
     # KPI 4b: Fecal Sludge Treated
     df = s_service_df.copy()
     if not df.empty and filter_col in df.columns:
-        df_filtered = df[df[filter_col].isin(selected_values)]
+        df_filtered = df.copy()
+        if selected_country and selected_country != 'No countries found':
+            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
         
         # Calculate FS Treated Rate
         # Note: We need estimated volume emptied - using hh_emptied as proxy
@@ -453,7 +484,7 @@ with col4:
 
 st.markdown("---")
 st.markdown("""
-### 📋 Sanitation Service Dashboard Summary
+### Sanitation Service Dashboard Summary
 This dashboard provides detailed sanitation service performance metrics:
 
 - **Access**: Sewer coverage showing household connections to sewer network

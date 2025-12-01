@@ -25,19 +25,21 @@ def format_currency(amount, show_detailed=False):
 def get_primary_country(df):
     """Get primary country from dataframe"""
     if df.empty or 'country' not in df.columns:
-        return 'All Countries'
-    countries = df['country'].dropna().unique()
-    return countries[0] if len(countries) == 1 else 'Multiple Countries'
+        return 'No Country'
+    countries = [c for c in df['country'].dropna().unique() if str(c).strip()]
+    return countries[0] if len(countries) >= 1 else 'No Country'
 
 # ---------------------------#
 # Streamlit Page Setup
 # ---------------------------#
 st.set_page_config(
     page_title="Water Utility Financial Health Dashboard",
-    page_icon="💧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Ensure browser resolves Streamlit runtime assets from root when pages are navigated
+st.markdown("<base href='/' />", unsafe_allow_html=True)
 
 # ---------------------------#
 # Custom CSS
@@ -257,13 +259,31 @@ def main():
     analyzer = FinancialHealthAnalyzer()
 
     # Sidebar: Filters
-    st.sidebar.header("🔍 Filter Options")
-    available_countries = sorted({c for df in analyzer.data.values() if not df.empty and 'country' in df.columns for c in df['country'].unique()})
-    selected_countries = st.sidebar.multiselect(
-        "Select Countries", 
-        available_countries, 
-        default=available_countries,
-        help="Filter data by one or more countries"
+    st.sidebar.header("Filter Options")
+    # Build a cleaned list of available countries and exclude empty/n_a placeholders
+    raw_countries = [c for df in analyzer.data.values() if not df.empty and 'country' in df.columns for c in df['country'].unique()]
+    cleaned = []
+    for c in raw_countries:
+        try:
+            if pd.isna(c):
+                continue
+        except Exception:
+            pass
+        s = str(c).strip()
+        if s == "" or s.lower() in ("nan", "n/a", "<n/a>", "<na>", "na", "none"):
+            continue
+        cleaned.append(s)
+
+    available_countries = sorted(set(cleaned))
+
+    # Use a single-dropdown with only real countries (no 'All Countries')
+    if not available_countries:
+        available_countries = ['No countries found']
+    selected_country = st.sidebar.selectbox(
+        "Select Country",
+        options=available_countries,
+        index=0,
+        help="Select a country to filter the dashboard (single selection)"
     )
     
     st.sidebar.markdown("---")
@@ -273,7 +293,7 @@ def main():
     date_max = max((df['date'].max() for df in analyzer.data.values() if not df.empty and 'date' in df.columns), default=None)
     
     if date_min and date_max:
-        st.sidebar.markdown("### 📅 Time Period")
+        st.sidebar.markdown("### Time Period")
         # Quick period selection
         period_option = st.sidebar.radio(
             "Select Period:",
@@ -298,8 +318,9 @@ def main():
     for key, df in analyzer.data.items():
         if not df.empty:
             fdf = df.copy()
-            if selected_countries and 'country' in fdf.columns:
-                fdf = fdf[fdf['country'].isin(selected_countries)]
+            # Apply single-country filter (exact match). If placeholder present, skip filtering.
+            if selected_country and 'country' in fdf.columns and selected_country != 'No countries found':
+                fdf = fdf[fdf['country'] == selected_country]
             if date_range and len(date_range) == 2 and 'date' in fdf.columns:
                 start = pd.to_datetime(date_range[0]) if not isinstance(date_range[0], pd.Timestamp) else date_range[0]
                 end = pd.to_datetime(date_range[1]) if not isinstance(date_range[1], pd.Timestamp) else date_range[1]
@@ -847,7 +868,7 @@ def display_overview_tab(filtered_data, analyzer):
             """)
         
         with col3:
-            arrow = "📈" if trend > 2 else "📉" if trend < -2 else "➡️"
+            arrow = "↑" if trend > 2 else "↓" if trend < -2 else "→"
             trend_text = "improving" if trend > 2 else "declining" if trend < -2 else "stable"
             st.markdown(f"""
             **Recent Trend**  
