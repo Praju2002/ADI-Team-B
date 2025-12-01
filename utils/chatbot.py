@@ -304,11 +304,101 @@ def call_groq(prompt: str, api_key: Optional[str] = None, max_output_tokens: int
         return f"[Groq call failed: {e}]"
 
 
-def answer_query(query: str, top_k: int = 4, api_key: Optional[str] = None, include_graph: bool = False, table_schemas: Dict[str, List[str]] = None) -> Dict[str, Any]:
-    """Retrieve supporting docs and ask the LLM for an answer.
 
-    Returns: {'answer': str, 'sources': [{'meta','score','text'}]}
+def generate_pandas_code(query: str, table_schemas: Dict[str, List[str]], api_key: Optional[str] = None) -> str:
+    """Generate Pandas code to answer a query based on table schemas."""
+    schema_str = "\n".join([f"- {table}: {cols}" for table, cols in table_schemas.items()])
+    prompt = (
+        "You are a smart data analyst. You have access to a dictionary `dfs` containing pandas DataFrames.\n"
+        f"Available tables and columns:\n{schema_str}\n\n"
+        "User Question: " + query + "\n\n"
+        "Write Python code to answer the question. \n"
+        "Rules:\n"
+        "1. Use `dfs['table_name']` to access dataframes.\n"
+        "2. Assign the final answer to a variable named `result`.\n"
+        "3. The `result` variable should be a string, number, or pandas DataFrame/Series.\n"
+        "4. Do NOT use `print()`. Just assign to `result`.\n"
+        "5. Wrap the code in ```python\n...\n```.\n"
+        "6. Handle potential missing values or empty dataframes gracefully.\n"
+        "7. If the user asks for a list, return a list or comma-separated string.\n"
+        "8. If the user asks for a sum, average, or count, perform the calculation.\n"
+    )
+    
+    # Call LLM (reusing existing call functions)
+    # We'll use the same logic as answer_query to pick the backend
+    if api_key and str(api_key).startswith('sk-'):
+        return call_openai(prompt, api_key=api_key)
+    elif (api_key and str(api_key).startswith('gsk_')) or os.environ.get('GROQ_API_KEY'):
+        effective_key = api_key if (api_key and str(api_key).startswith('gsk_')) else os.environ.get('GROQ_API_KEY')
+        return call_groq(prompt, api_key=effective_key)
+    else:
+        return call_google_bison(prompt, api_key=api_key)
+
+
+def execute_pandas_code(code: str, dfs: Dict[str, pd.DataFrame]) -> Any:
+    """Execute generated pandas code in a restricted scope."""
+    # Basic safety check: prevent import of os, sys, subprocess
+    if any(x in code for x in ['import os', 'import sys', 'import subprocess', '__import__']):
+        return "Error: Unsafe code detected."
+    
+    local_scope = {'dfs': dfs, 'pd': pd, 'np': np}
+    try:
+        exec(code, {}, local_scope)
+        return local_scope.get('result', "No 'result' variable found in executed code.")
+    except Exception as e:
+        return f"Error executing code: {e}"
+
+
+def answer_query(query: str, top_k: int = 4, api_key: Optional[str] = None, include_graph: bool = False, table_schemas: Dict[str, List[str]] = None, dfs: Dict[str, pd.DataFrame] = None) -> Dict[str, Any]:
+    """Retrieve supporting docs and ask the LLM for an answer.
+    
+    If 'dfs' is provided, it attempts to generate and execute pandas code first for analytical queries.
     """
+    # 1. Try Text-to-Pandas if dataframes are available
+    generated_code = None
+    execution_result = None
+    
+    if dfs and table_schemas:
+        # Heuristic: Check if query implies aggregation or specific data lookup
+        # For now, we'll try to generate code for most queries if dfs are passed, 
+        # but we can make the prompt decide if it needs code or not.
+        # Let's ask the LLM to generate code.
+        
+        # We need a way to know if the LLM *chose* to write code or just answered textually.
+        # The generate_pandas_code prompt forces code. 
+        # Let's try a hybrid approach: Ask LLM if it can answer with code.
+        
+        # Simpler approach for this iteration: Always try to generate code if dfs are present.
+        # If the code fails or returns nothing meaningful, fall back to RAG.
+        # However, for "What is NRW?", code generation is bad.
+        
+        # Let's add a classification step or just prompt "If this requires data analysis..."
+        # For efficiency, let's assume if the user enabled the "Smart Analyst" feature (implied by passing dfs),
+        # they want analysis. But we should be careful.
+        
+        # Let's try to generate code.
+        raw_response = generate_pandas_code(query, table_schemas, api_key)
+        
+        # Extract code block
+        import re
+        code_match = re.search(r'```python\n(.*?)\n```', raw_response, re.DOTALL)
+        if code_match:
+            generated_code = code_match.group(1)
+            execution_result = execute_pandas_code(generated_code, dfs)
+            
+            # If execution was successful and result is not an error string
+            if not isinstance(execution_result, str) or not execution_result.startswith("Error"):
+                # We have a data result. Now let's format it nicely with the LLM.
+                # Or just return it.
+                return {
+                    'answer': f"**Analysis Result:**\n{execution_result}\n\n*Calculated by executing generated code.*",
+                    'sources': [],
+                    'insight': None,
+                    'generated_code': generated_code,
+                    'execution_result': str(execution_result)
+                }
+    
+    # 2. Fallback to RAG (Standard Flow)
     docs = get_top_docs(query, top_k=top_k)
     prompt = _build_prompt(query, docs, include_graph=include_graph, table_schemas=table_schemas)
     # Choose backend by key type: OpenAI keys usually start with 'sk-', Groq keys start with 'gsk_'
