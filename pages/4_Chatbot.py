@@ -7,7 +7,113 @@ import pandas as pd
 import plotly.express as px
 
 st.set_page_config(page_title="Data Chatbot", layout="wide")
-st.title("🤖 Chat with the Dashboard Data")
+
+# Modern minimalist design
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * { font-family: 'Inter', -apple-system, sans-serif; }
+    
+    .main { 
+        padding: 2rem 3rem; 
+        background: #ffffff;
+    }
+    
+    h1 { 
+        font-size: 2.5rem; 
+        font-weight: 700; 
+        color: #0f172a;
+        letter-spacing: -0.03em;
+        margin-bottom: 0.5rem;
+    }
+    
+    h3 { 
+        font-size: 0.875rem; 
+        font-weight: 600; 
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-top: 2.5rem;
+    }
+    
+    .stChatMessage { 
+        background: #ffffff;
+        border-radius: 12px; 
+        padding: 1rem; 
+        margin: 0.5rem 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: none;
+    }
+    
+    [data-testid="stSidebar"] { 
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+    }
+    
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 { 
+        color: #334155; 
+        font-size: 0.75rem; 
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .stTextInput label, .stSlider label, .stCheckbox label { 
+        color: #475569; 
+        font-weight: 500; 
+        font-size: 0.875rem;
+    }
+    
+    .stTextInput > div > div { 
+        background: #ffffff;
+        border: 1px solid #cbd5e0; 
+        border-radius: 8px;
+    }
+    
+    .stButton > button { 
+        background: #3b82f6; 
+        color: white; 
+        border: none; 
+        border-radius: 8px; 
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+    }
+    
+    .stButton > button:hover { 
+        background: #2563eb;
+    }
+    
+    [data-testid="stPlotlyChart"] { 
+        background: #ffffff;
+        padding: 1rem; 
+        border-radius: 12px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: none;
+    }
+    
+    .stSuccess { 
+        border-radius: 8px; 
+        border-left: 4px solid #10b981;
+        background: #d1fae5;
+    }
+    
+    .stInfo { 
+        border-radius: 8px; 
+        border-left: 4px solid #3b82f6;
+        background: #eff6ff;
+    }
+    
+    .stWarning { 
+        border-radius: 8px; 
+        border-left: 4px solid #f59e0b;
+        background: #fffbeb;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🤖 AI Assistant")
 
 with st.sidebar:
     st.header("Chat Settings")

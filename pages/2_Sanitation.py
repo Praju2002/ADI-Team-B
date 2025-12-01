@@ -8,7 +8,116 @@ from pathlib import Path
 
 st.set_page_config(page_title="Sanitation Service Dashboard", layout="wide")
 
-st.title("Sanitation Service Dashboard")
+# Modern minimalist design
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * { font-family: 'Inter', -apple-system, sans-serif; }
+    
+    .main { 
+        padding: 2rem 3rem; 
+        background: #ffffff;
+    }
+    
+    h1 { 
+        font-size: 2.5rem; 
+        font-weight: 700; 
+        color: #0f172a;
+        letter-spacing: -0.03em;
+        margin-bottom: 0.5rem;
+    }
+    
+    h3 { 
+        font-size: 0.875rem; 
+        font-weight: 600; 
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-top: 2.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    [data-testid="stMetricValue"] { 
+        font-size: 2rem; 
+        color: #0f172a; 
+        font-weight: 700;
+    }
+    
+    [data-testid="stMetricLabel"] { 
+        color: #64748b; 
+        font-size: 0.75rem; 
+        font-weight: 600; 
+        text-transform: uppercase; 
+        letter-spacing: 0.05em;
+    }
+    
+    [data-testid="metric-container"] { 
+        background: #ffffff;
+        padding: 1.5rem; 
+        border-radius: 12px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: none;
+    }
+    
+    [data-testid="stSidebar"] { 
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+    }
+    
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 { 
+        color: #334155; 
+        font-size: 0.75rem; 
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .stSelectbox label, .stRadio label { 
+        color: #475569; 
+        font-weight: 500; 
+        font-size: 0.875rem;
+    }
+    
+    .stSelectbox > div > div { 
+        background: #ffffff;
+        border: 1px solid #cbd5e0; 
+        border-radius: 8px;
+    }
+    
+    [data-testid="stPlotlyChart"] { 
+        background: #ffffff;
+        padding: 1rem; 
+        border-radius: 12px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: none;
+    }
+    
+    hr { 
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+        margin: 2rem 0;
+    }
+    
+    .stWarning { 
+        border-radius: 8px; 
+        border-left: 4px solid #f59e0b;
+        background: #fffbeb;
+    }
+    
+    .stInfo { 
+        border-radius: 8px; 
+        border-left: 4px solid #3b82f6;
+        background: #eff6ff;
+    }
+    
+    [data-testid="column"] { padding: 0.5rem; }
+</style>
+""", unsafe_allow_html=True)
+
+st.title(" Sanitation Services")
 
 # Ensure browser resolves Streamlit runtime assets from root when pages are navigated
 st.markdown("<base href='/' />", unsafe_allow_html=True)
@@ -165,7 +274,7 @@ if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
 # --- Main Dashboard ---
 
 # KPI 1: Sewer Coverage
-st.markdown("### 🏘️ Access")
+st.markdown("###  Access")
 col1, col2 = st.columns(2)
 
 with col1:
@@ -254,7 +363,7 @@ with col2:
             st.warning("Wastewater treatment data not available")
 
 st.markdown("---")
-st.markdown("### 🔧 Service Quality")
+st.markdown("###  Service Quality")
 
 # KPI 3: Customer Complaint Resolution Rate
 df = all_fin_service_df.copy()
@@ -303,7 +412,7 @@ st.markdown("---")
 # ===========================
 # NETWORK EFFICIENCY
 # ===========================
-st.markdown("### 🔧 Network Maintenance & Efficiency")
+st.markdown("###  Network Maintenance & Efficiency")
 st.caption("Data Availability: Cameroon, Lesotho, Malawi, Uganda")
 
 df_service = all_fin_service_df.copy()

@@ -42,44 +42,99 @@ st.set_page_config(
 st.markdown("<base href='/' />", unsafe_allow_html=True)
 
 # ---------------------------#
-# Custom CSS
+# Modern Minimalist Design
 # ---------------------------#
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
-        color: #2c3e50;
-        text-align: center;
-        margin-bottom: 1.5rem;
-        font-weight: 600;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * { font-family: 'Inter', -apple-system, sans-serif; }
+    
+    .main { 
+        padding: 2rem 3rem; 
+        background: #ffffff;
     }
-    .metric-card {
-        background-color: #ffffff;
-        padding: 1rem;
+    
+    h1, h2 { 
+        font-size: 2.5rem; 
+        font-weight: 700; 
+        color: #0f172a;
+        letter-spacing: -0.03em;
+    }
+    
+    h3 { 
+        font-size: 0.875rem; 
+        font-weight: 600; 
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-top: 2.5rem;
+    }
+    
+    [data-testid="stMetricValue"] { 
+        font-size: 2rem; 
+        color: #0f172a; 
+        font-weight: 700;
+    }
+    
+    [data-testid="stMetricLabel"] { 
+        color: #64748b; 
+        font-size: 0.75rem; 
+        font-weight: 600; 
+        text-transform: uppercase; 
+        letter-spacing: 0.05em;
+    }
+    
+    [data-testid="metric-container"] { 
+        background: #ffffff;
+        padding: 1.5rem; 
+        border-radius: 12px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: none;
+    }
+    
+    [data-testid="stSidebar"] { 
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+    }
+    
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 { 
+        color: #334155; 
+        font-size: 0.75rem; 
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .stSelectbox label, .stRadio label { 
+        color: #475569; 
+        font-weight: 500; 
+        font-size: 0.875rem;
+    }
+    
+    .stSelectbox > div > div { 
+        background: #ffffff;
+        border: 1px solid #cbd5e0; 
         border-radius: 8px;
-        border-left: 3px solid #3498db;
-        margin: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .positive-metric {
-        border-left: 3px solid #27ae60;
+    
+    [data-testid="stPlotlyChart"] { 
+        background: #ffffff;
+        padding: 1rem; 
+        border-radius: 12px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: none;
     }
-    .negative-metric {
-        border-left: 3px solid #c0392b;
+    
+    hr { 
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+        margin: 2rem 0;
     }
-    .warning-metric {
-        border-left: 3px solid #e67e22;
-    }
-    .stMetric {
-        background-color: #ffffff;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem;
-        font-weight: 600;
-    }
+    
+    [data-testid="column"] { padding: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -255,7 +310,7 @@ class FinancialHealthAnalyzer:
 # Dashboard Layout
 # ---------------------------#
 def main():
-    st.markdown('<h1 class="main-header">💧 Water Utility Financial Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header"> Water Utility Financial Dashboard</h1>', unsafe_allow_html=True)
     analyzer = FinancialHealthAnalyzer()
 
     # Sidebar: Filters
@@ -337,14 +392,7 @@ def main():
 def display_overview_tab(filtered_data, analyzer):
     """Financial health overview - focused on revenue collection and costs"""
     
-    # Clean header
-    st.markdown("""
-    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;'>
-        <h2 style='color: white; text-align: center; margin: 0; font-weight: 600;'>
-             Financial Health Dashboard
-        </h2>
-    </div>
-    """, unsafe_allow_html=True)
+   
     
     df = filtered_data.get('financial_services', pd.DataFrame())
     billing_df = filtered_data.get('billing', pd.DataFrame())
@@ -1005,7 +1053,7 @@ def display_overview_tab(filtered_data, analyzer):
     # ===========================
     # BUDGET MANAGEMENT & ALLOCATION
     # ===========================
-    st.markdown("### 💰 Budget Management & Resource Allocation")
+    st.markdown("### Budget Management & Resource Allocation")
     
     df_national = filtered_data.get('national_accounts', pd.DataFrame())
     
@@ -1139,7 +1187,7 @@ def display_overview_tab(filtered_data, analyzer):
     # HUMAN CAPITAL DEVELOPMENT
     # ===========================
     st.markdown("---")
-    st.markdown("### 👥 Human Capital & Training Investment")
+    st.markdown("###  Human Capital & Training Investment")
     st.caption("Available for: Cameroon, Lesotho, Malawi, Uganda")
     
     col1, col2 = st.columns(2)
