@@ -8,56 +8,64 @@ import plotly.express as px
 
 st.set_page_config(page_title="Data Chatbot", layout="wide")
 
-# Modern minimalist design
+# Modern pastel design
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
     
-    * { font-family: 'Inter', -apple-system, sans-serif; }
+    * { 
+        font-family: 'Poppins', 'Inter', -apple-system, sans-serif;
+        transition: all 0.2s ease;
+    }
     
     .main { 
         padding: 2rem 3rem; 
-        background: #ffffff;
+        background: linear-gradient(135deg, #fdfbfb 0%, #f7f4f9 100%);
+        min-height: 100vh;
     }
     
     h1 { 
-        font-size: 2.5rem; 
-        font-weight: 700; 
-        color: #0f172a;
-        letter-spacing: -0.03em;
+        font-size: 2.8rem; 
+        font-weight: 600; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.02em;
         margin-bottom: 0.5rem;
     }
     
     h3 { 
         font-size: 0.875rem; 
         font-weight: 600; 
-        color: #64748b;
+        color: #9ca3af;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.15em;
         margin-top: 2.5rem;
     }
     
     .stChatMessage { 
-        background: #ffffff;
-        border-radius: 12px; 
-        padding: 1rem; 
-        margin: 0.5rem 0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        border: none;
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+        border-radius: 16px; 
+        padding: 1.5rem; 
+        margin: 0.8rem 0;
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.5);
     }
     
     [data-testid="stSidebar"] { 
-        background: #f8fafc;
-        border-right: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+        border-right: 1px solid rgba(167, 139, 250, 0.2);
     }
     
     [data-testid="stSidebar"] h2, 
     [data-testid="stSidebar"] h3 { 
-        color: #334155; 
+        color: #78716c; 
         font-size: 0.75rem; 
-        font-weight: 700;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
     }
     
     .stTextInput label, .stSlider label, .stCheckbox label { 
@@ -73,16 +81,20 @@ st.markdown("""
     }
     
     .stButton > button { 
-        background: #3b82f6; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white; 
         border: none; 
-        border-radius: 8px; 
-        padding: 0.5rem 1.5rem;
+        border-radius: 12px; 
+        padding: 0.65rem 1.8rem;
         font-weight: 600;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        transition: all 0.3s ease;
     }
     
     .stButton > button:hover { 
-        background: #2563eb;
+        background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
     }
     
     [data-testid="stPlotlyChart"] { 

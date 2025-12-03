@@ -8,61 +8,72 @@ import time
 
 st.set_page_config(page_title="Summary Dashboard", layout="wide")
 
-# Modern minimalist design
+# Modern minimalist design with pastel colors
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
     
-    * { font-family: 'Inter', -apple-system, sans-serif; }
+    * { 
+        font-family: 'Poppins', 'Inter', -apple-system, sans-serif; 
+        transition: all 0.2s ease;
+    }
     
     .main { 
         padding: 2rem 3rem; 
-        background: #ffffff;
+        background: linear-gradient(135deg, #fdfbfb 0%, #f7f4f9 100%);
+        min-height: 100vh;
     }
     
     h1 { 
-        font-size: 2.5rem; 
-        font-weight: 700; 
-        color: #0f172a;
-        letter-spacing: -0.03em;
+        font-size: 2.8rem; 
+        font-weight: 600; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.02em;
         margin-bottom: 0.5rem;
     }
     
     h3 { 
         font-size: 0.875rem; 
         font-weight: 600; 
-        color: #64748b;
+        color: #9ca3af;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.15em;
         margin-top: 2.5rem;
         margin-bottom: 1rem;
     }
     
     [data-testid="stMetricValue"] { 
         font-size: 2rem; 
-        color: #0f172a; 
-        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 600;
     }
     
     [data-testid="stMetricLabel"] { 
-        color: #64748b; 
+        color: #9ca3af; 
         font-size: 0.75rem; 
-        font-weight: 600; 
+        font-weight: 500; 
         text-transform: uppercase; 
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
     }
     
     [data-testid="metric-container"] { 
-        background: #ffffff;
-        padding: 1.5rem; 
-        border-radius: 12px; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        border: none;
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 1.8rem; 
+        border-radius: 16px; 
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.6);
     }
     
     [data-testid="stSidebar"] { 
-        background: #f8fafc;
-        border-right: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+        border-right: 1px solid rgba(167, 139, 250, 0.2);
     }
     
     [data-testid="stSidebar"] h2, 
@@ -75,30 +86,37 @@ st.markdown("""
     }
     
     .stSelectbox label, .stRadio label { 
-        color: #475569; 
+        color: #6b7280; 
         font-weight: 500; 
         font-size: 0.875rem;
     }
     
     .stSelectbox > div > div { 
-        background: #ffffff;
-        border: 1px solid #cbd5e0; 
-        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(167, 139, 250, 0.3); 
+        border-radius: 12px;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div > div:hover {
+        border-color: rgba(167, 139, 250, 0.6);
+        box-shadow: 0 4px 12px rgba(167, 139, 250, 0.15);
     }
     
     [data-testid="stPlotlyChart"] { 
-        background: #ffffff;
-        padding: 1rem; 
-        border-radius: 12px; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        border: none;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        padding: 1.2rem; 
+        border-radius: 16px; 
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.4);
     }
     
     hr { 
         border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
-        margin: 2rem 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.3), transparent);
+        margin: 2.5rem 0;
     }
     
     .stWarning { 

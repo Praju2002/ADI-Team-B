@@ -42,60 +42,71 @@ st.set_page_config(
 st.markdown("<base href='/' />", unsafe_allow_html=True)
 
 # ---------------------------#
-# Modern Minimalist Design
+# Modern Pastel Design
 # ---------------------------#
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
     
-    * { font-family: 'Inter', -apple-system, sans-serif; }
+    * { 
+        font-family: 'Poppins', 'Inter', -apple-system, sans-serif;
+        transition: all 0.2s ease;
+    }
     
     .main { 
         padding: 2rem 3rem; 
-        background: #ffffff;
+        background: linear-gradient(135deg, #fdfbfb 0%, #f7f4f9 100%);
+        min-height: 100vh;
     }
     
     h1, h2 { 
-        font-size: 2.5rem; 
-        font-weight: 700; 
-        color: #0f172a;
-        letter-spacing: -0.03em;
+        font-size: 2.8rem; 
+        font-weight: 600; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.02em;
     }
     
     h3 { 
         font-size: 0.875rem; 
         font-weight: 600; 
-        color: #64748b;
+        color: #9ca3af;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.15em;
         margin-top: 2.5rem;
     }
     
     [data-testid="stMetricValue"] { 
         font-size: 2rem; 
-        color: #0f172a; 
-        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 600;
     }
     
     [data-testid="stMetricLabel"] { 
-        color: #64748b; 
+        color: #9ca3af; 
         font-size: 0.75rem; 
-        font-weight: 600; 
+        font-weight: 500; 
         text-transform: uppercase; 
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
     }
     
     [data-testid="metric-container"] { 
-        background: #ffffff;
-        padding: 1.5rem; 
-        border-radius: 12px; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        border: none;
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(12px);
+        padding: 1.8rem; 
+        border-radius: 18px; 
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.5);
     }
     
     [data-testid="stSidebar"] { 
-        background: #f8fafc;
-        border-right: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+        border-right: 1px solid rgba(167, 139, 250, 0.2);
     }
     
     [data-testid="stSidebar"] h2, 
@@ -458,49 +469,7 @@ def display_overview_tab(filtered_data, analyzer):
     # ===========================
     # FINANCIAL SUMMARY CARDS
     # ===========================
-    st.markdown("---")
-    st.markdown("### Financial Summary - Sewer Services")
    
-    
-    col_a, col_b, col_c, col_d,  = st.columns(4)
-    
-    with col_a:
-        st.markdown(f"""
-        <div style='background-color: #e8f4f8; padding: 1rem; border-radius: 8px; border-left: 4px solid #3498db;'>
-            <h4 style='margin: 0; color: #2c3e50;'>Sewer Billed</h4>
-            <h2 style='margin: 0.5rem 0 0 0; color: #3498db;'>{format_currency(metrics['total_billed'])}</h2>
-            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Total billed</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_b:
-        st.markdown(f"""
-        <div style='background-color: #e8f8f0; padding: 1rem; border-radius: 8px; border-left: 4px solid #27ae60;'>
-            <h4 style='margin: 0; color: #2c3e50;'>Sewer Collected</h4>
-            <h2 style='margin: 0.5rem 0 0 0; color: #27ae60;'>{format_currency(metrics['total_revenue'])}</h2>
-            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Revenue collected</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_c:
-        st.markdown(f"""
-        <div style='background-color: #fff3e0; padding: 1rem; border-radius: 8px; border-left: 4px solid #f39c12;'>
-            <h4 style='margin: 0; color: #2c3e50;'>Operating Costs</h4>
-            <h2 style='margin: 0.5rem 0 0 0; color: #f39c12;'>{format_currency(metrics['total_opex'])}</h2>
-            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>Total OpEx</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_d:
-        profit_color = "#27ae60" if profit_val > 0 else "#e74c3c"
-        profit_bg = "#e8f8f0" if profit_val > 0 else "#fdecea"
-        st.markdown(f"""
-        <div style='background-color: {profit_bg}; padding: 1rem; border-radius: 8px; border-left: 4px solid {profit_color};'>
-            <h4 style='margin: 0; color: #2c3e50;'>Net Profit/Loss</h4>
-            <h2 style='margin: 0.5rem 0 0 0; color: {profit_color};'>{format_currency(profit_val)}</h2>
-            <p style='margin: 0; font-size: 0.9rem; color: #7f8c8d;'>{"✓ Surplus" if profit_val > 0 else "✗ Deficit"}</p>
-        </div>
-        """, unsafe_allow_html=True)
     
     # with col_e:
     #     customer_collection = billing_metrics.get('billing_collection_ratio', 0)
