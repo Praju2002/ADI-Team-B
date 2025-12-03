@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import numpy as np
 import os
 from pathlib import Path
+from utils.floating_button import add_floating_chatbot_button
 
 st.set_page_config(page_title="Sanitation Service Dashboard", layout="wide")
 
@@ -614,3 +615,6 @@ This dashboard provides detailed sanitation service performance metrics:
 
 Use the sidebar to filter by country and explore detailed trends over time.
 """)
+
+# Add floating chatbot button
+add_floating_chatbot_button()

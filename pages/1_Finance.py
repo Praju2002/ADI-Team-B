@@ -7,6 +7,7 @@ from plotly.subplots import make_subplots
 import os
 import warnings
 import matplotlib.pyplot as plt
+from utils.floating_button import add_floating_chatbot_button
 
 warnings.filterwarnings('ignore')
 
@@ -1449,3 +1450,5 @@ def display_trends_tab(filtered_data, analyzer, show_usd=False):
 # ---------------------------#
 if __name__ == "__main__":
     main()
+    # Add floating chatbot button
+    add_floating_chatbot_button()

@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import os
 from pathlib import Path
 import time
+from utils.floating_button import add_floating_chatbot_button
 
 st.set_page_config(page_title="Summary Dashboard", layout="wide")
 
@@ -662,3 +663,6 @@ This dashboard provides a high-level overview of water and sanitation services a
 
 Use the sidebar to filter by country and explore detailed trends over time.
 """)
+
+# Add floating chatbot button
+add_floating_chatbot_button()
