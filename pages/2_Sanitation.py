@@ -1,14 +1,41 @@
+"""
+Sanitation Operations Dashboard
+================================
+KPIs Implemented:
+- Sewer Unresolved Complaints (SUC) Rate: UC = (complaints - resolved) / complaints × 100
+- Sewer Blocks per Kilometre (SBK): blocks / sewer_length
+- Sewer Revenue Coverage (SRC) Rate: (sewer_revenue / opex) × 100
+- Sanitation Staffing per Sewer Connection (SSS) Rate
+- Sanitation Access (SA) over time: stacked bar chart with safely_managed_pct, basic_pct, limited_pct, unimproved_pct, open_def_pct
+- Households Unconnected to Sanitation (HUS) Rate: (households - sewer_connections) / households × 100
+"""
+
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
-import os
-from pathlib import Path
+from plotly.subplots import make_subplots
+from utils.plot_utils import set_smart_yaxis
+from utils.colors import OKABE_ITO, CB_SEQUENTIAL
+import warnings
 
-st.set_page_config(page_title="Sanitation Service Dashboard", layout="wide")
+warnings.filterwarnings('ignore')
 
-# Modern pastel design
+# ---------------------------#
+# Page Setup
+# ---------------------------#
+st.set_page_config(
+    page_title="Sanitation Operations Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("<base href='/' />", unsafe_allow_html=True)
+
+# ---------------------------#
+# Modern Pastel Design
+# ---------------------------#
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
@@ -24,7 +51,7 @@ st.markdown("""
         min-height: 100vh;
     }
     
-    h1 { 
+    h1, h2 { 
         font-size: 2.8rem; 
         font-weight: 600; 
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -32,7 +59,6 @@ st.markdown("""
         -webkit-text-fill-color: transparent;
         background-clip: text;
         letter-spacing: -0.02em;
-        margin-bottom: 0.5rem;
     }
     
     h3 { 
@@ -42,7 +68,6 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.15em;
         margin-top: 2.5rem;
-        margin-bottom: 1rem;
     }
     
     [data-testid="stMetricValue"] { 
@@ -112,142 +137,158 @@ st.markdown("""
         margin: 2rem 0;
     }
     
-    .stWarning { 
-        border-radius: 8px; 
-        border-left: 4px solid #f59e0b;
-        background: #fffbeb;
-    }
-    
-    .stInfo { 
-        border-radius: 8px; 
-        border-left: 4px solid #3b82f6;
-        background: #eff6ff;
-    }
-    
     [data-testid="column"] { padding: 0.5rem; }
+    
+    /* Fix tooltip overflow and positioning */
+    [data-testid="stTooltipIcon"] {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        vertical-align: middle !important;
+    }
+    
+    .stTooltipContent {
+        max-width: 400px !important;
+        min-width: 250px !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        padding: 12px !important;
+        line-height: 1.5 !important;
+    }
+    
+    /* Align help icon with title */
+    [data-testid="column"]:has([data-testid="stTooltipIcon"]) {
+        display: flex !important;
+        align-items: flex-start !important;
+        padding-top: 0.5rem !important;
+    }
+    
+    [data-testid="column"]:has([data-testid="stTooltipIcon"]) > div {
+        margin-top: 0 !important;
+    }
+    
+    /* Fix Plotly chart tooltip overflow */
+    /* Allow hover layer events so text and box render together correctly */
+    .plotly .hoverlayer {
+        pointer-events: auto !important;
+    }
+
+    .plotly .hoverlayer .hovertext {
+        max-width: 300px !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        pointer-events: auto !important;
+    }
+    
+    /* Ensure chart containers don't overflow */
+    [data-testid="stPlotlyChart"] {
+        overflow: visible !important;
+        position: relative !important;
+    }
+    
+    [data-testid="stPlotlyChart"] > div {
+        overflow: visible !important;
+    }
+    
+    .svg-container {
+        overflow: visible !important;
+    }
+    /* Prevent global transition animations from affecting Plotly tooltip positioning */
+    .plotly .hoverlayer, .plotly .hoverlayer * {
+        transition: none !important;
+        -webkit-transition: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.title(" Sanitation Services")
-
-# Ensure browser resolves Streamlit runtime assets from root when pages are navigated
-st.markdown("<base href='/' />", unsafe_allow_html=True)
-
-# --- Helper Functions ---
-def plotly_chart_with_labels(df, x_col, y_col, chart_label, unit="", color_col=None):
-    """Create a line chart with labels"""
-    st.subheader(chart_label)
-    
-    if df.empty or y_col not in df.columns:
-        st.warning(f"No data available for {chart_label}")
-        return
-    
-    # Filter out invalid values before aggregation
-    df_clean = df[[x_col, y_col, color_col] if color_col and color_col in df.columns else [x_col, y_col]].copy()
-    df_clean = df_clean.dropna(subset=[y_col])
-    
-    # Average y-axis by x-axis and color
-    if color_col and color_col in df.columns:
-        df_avg = df_clean.groupby([x_col, color_col], as_index=False)[y_col].mean().round(2)
-        fig = px.line(df_avg, x=x_col, y=y_col, color=color_col, 
-                     title=f"{chart_label} by {x_col}",
-                     markers=True)
-    else:
-        df_avg = df_clean.groupby(x_col, as_index=False)[y_col].mean().round(2)
-        fig = px.line(df_avg, x=x_col, y=y_col, 
-                     title=f"{chart_label} by {x_col}",
-                     markers=True)
-    
-    # Layout
-    fig.update_layout(
-        title_x=0.5,
-        xaxis_title=x_col,
-        yaxis_title=f"{y_col} {unit}",
-        template="plotly_white",
-        hovermode='x unified',
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_label}")
-
-# --- Import centralized data loader ---
+# ---------------------------#
+# Import Data Loader
+# ---------------------------#
 from utils.data_loader import load_table
 
-# Load only the data needed for this page (lazy loading)
+# ---------------------------#
+# Helper Functions
+# ---------------------------#
+def safe_div(a, b, default=0):
+    """Safe division to handle zero/NaN."""
+    try:
+        if pd.isna(a) or pd.isna(b) or b == 0:
+            return default
+        return a / b
+    except Exception:
+        return default
+
+
+def get_clean_countries(df, col='country'):
+    """Get cleaned list of countries from dataframe."""
+    if df.empty or col not in df.columns:
+        return ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+    
+    cleaned = []
+    for c in df[col].unique():
+        try:
+            if pd.isna(c):
+                continue
+        except Exception:
+            pass
+        s = str(c).strip()
+        if s == "" or s.lower() in ("nan", "n/a", "<n/a>", "<na>", "na", "none"):
+            continue
+        cleaned.append(s)
+    
+    return sorted(set(cleaned)) if cleaned else ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+
+
+# ---------------------------#
+# Load Data
+# ---------------------------#
+st.title("Sanitation Operations")
+
 with st.spinner('Loading sanitation data...'):
     all_fin_service_df = load_table('all_fin_service')
     s_service_df = load_table('s_service')
+    s_access_df = load_table('s_access')
 
-# --- External Filter ---
-filter_col = 'country'
-
+# ---------------------------#
+# Sidebar Filters
+# ---------------------------#
 st.sidebar.header("Filter Options")
 
-# Build cleaned country list and exclude placeholders like NaN, 'n/a', '<n/a>'
-raw_countries = []
-if not s_service_df.empty and filter_col in s_service_df.columns:
-    raw_countries = list(s_service_df[filter_col].unique())
-elif not all_fin_service_df.empty and filter_col in all_fin_service_df.columns:
-    raw_countries = list(all_fin_service_df[filter_col].unique())
-else:
-    raw_countries = ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+# Get available countries
+available_countries = get_clean_countries(s_service_df)
+if not available_countries:
+    available_countries = get_clean_countries(all_fin_service_df)
 
-cleaned = []
-for c in raw_countries:
-    try:
-        if pd.isna(c):
-            continue
-    except Exception:
-        pass
-    s = str(c).strip()
-    if s == "" or s.lower() in ("nan", "n/a", "<n/a>", "<na>", "na", "none"):
-        continue
-    cleaned.append(s)
-
-available_countries = sorted(set(cleaned)) if cleaned else ['No countries found']
-
-# Single-select dropdown (first country selected by default)
 selected_country = st.sidebar.selectbox(
     "Select Country",
     options=available_countries,
-    index=0,
-    help="Select a country to filter the dashboard (single selection)"
+    index=0
 )
 
 st.sidebar.markdown("---")
 
-# Date filtering with quick period selection
-date_min = None
-date_max = None
-date_col = None
+# Date filtering
+date_min, date_max = None, None
+for df in [all_fin_service_df, s_service_df]:
+    if not df.empty and 'date' in df.columns:
+        try:
+            df_min = pd.to_datetime(df['date'], errors='coerce').min()
+            df_max = pd.to_datetime(df['date'], errors='coerce').max()
+            if pd.notna(df_min) and (date_min is None or df_min < date_min):
+                date_min = df_min
+            if pd.notna(df_max) and (date_max is None or df_max > date_max):
+                date_max = df_max
+        except Exception:
+            pass
 
-for df in [s_service_df, all_fin_service_df]:
-    if not df.empty:
-        # Check for date columns
-        if 'date' in df.columns:
-            date_col = 'date'
-        elif 'date_MMYY' in df.columns:
-            date_col = 'date_MMYY'
-        
-        if date_col and date_col in df.columns:
-            try:
-                df_date_min = pd.to_datetime(df[date_col], errors='coerce').min()
-                df_date_max = pd.to_datetime(df[date_col], errors='coerce').max()
-                if pd.notna(df_date_min) and pd.notna(df_date_max):
-                    if date_min is None or df_date_min < date_min:
-                        date_min = df_date_min
-                    if date_max is None or df_date_max > date_max:
-                        date_max = df_date_max
-            except:
-                pass
-
-if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
+if date_min and date_max:
     st.sidebar.markdown("### Time Period")
     period_option = st.sidebar.radio(
         "Select Period:",
         ["All Time", "Last 12 Months", "Last 6 Months", "Custom Range"],
-        index=0,
-        help="Choose a time period to analyze"
+        index=0
     )
     
     if period_option == "Last 12 Months":
@@ -255,362 +296,1211 @@ if date_min and date_max and pd.notna(date_min) and pd.notna(date_max):
     elif period_option == "Last 6 Months":
         date_range = (date_max - pd.DateOffset(months=6), date_max)
     elif period_option == "Custom Range":
-        date_range = st.sidebar.date_input("Select Date Range:", value=(date_min, date_max))
+        date_range = st.sidebar.date_input("Select Date Range:", value=(date_min.date(), date_max.date()))
     else:
         date_range = (date_min, date_max)
+else:
+    date_range = None
+
+
+# ---------------------------#
+# Apply Filters
+# ---------------------------#
+def apply_filters(df, country, date_range, date_col='date'):
+    """Apply country and date filters to dataframe."""
+    if df.empty:
+        return df
     
-    # Apply date filtering to dataframes
-    if date_range and len(date_range) == 2:
-        start = pd.to_datetime(date_range[0]) if not isinstance(date_range[0], pd.Timestamp) else date_range[0]
-        end = pd.to_datetime(date_range[1]) if not isinstance(date_range[1], pd.Timestamp) else date_range[1]
-        
-        if not s_service_df.empty:
-            dc = 'date' if 'date' in s_service_df.columns else 'date_MMYY' if 'date_MMYY' in s_service_df.columns else None
-            if dc:
-                try:
-                    s_service_df[dc] = pd.to_datetime(s_service_df[dc], errors='coerce')
-                    s_service_df = s_service_df[(s_service_df[dc] >= start) & (s_service_df[dc] <= end)]
-                except:
-                    pass
-        
-        if not all_fin_service_df.empty:
-            dc = 'date' if 'date' in all_fin_service_df.columns else 'date_MMYY' if 'date_MMYY' in all_fin_service_df.columns else None
-            if dc:
-                try:
-                    all_fin_service_df[dc] = pd.to_datetime(all_fin_service_df[dc], errors='coerce')
-                    all_fin_service_df = all_fin_service_df[(all_fin_service_df[dc] >= start) & (all_fin_service_df[dc] <= end)]
-                except:
-                    pass
+    df = df.copy()
+    
+    # Country filter
+    if country and 'country' in df.columns:
+        df = df[df['country'] == country]
+    
+    # Date filter
+    if date_range and len(date_range) == 2 and date_col in df.columns:
+        if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        start = pd.to_datetime(date_range[0])
+        end = pd.to_datetime(date_range[1])
+        df = df[(df[date_col] >= start) & (df[date_col] <= end)]
+    
+    return df
 
-# --- Main Dashboard ---
 
-# KPI 1: Sewer Coverage
-st.markdown("###  Access")
-col1, col2 = st.columns(2)
+fin_service_filtered = apply_filters(all_fin_service_df, selected_country, date_range)
+s_service_filtered = apply_filters(s_service_df, selected_country, date_range)
+s_access_filtered = apply_filters(s_access_df, selected_country, None, date_col='year')
 
-with col1:
-    df = s_service_df.copy()
-    if not df.empty and filter_col in df.columns:
-        df_filtered = df.copy()
-        if selected_country and selected_country != 'No countries found':
-            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
-        
-        # Calculate Sewer Coverage
-        if 'sewer_connections' in df_filtered.columns and 'households' in df_filtered.columns:
-            df_filtered["Sewer_Coverage"] = df_filtered.apply(
-                lambda row: (row["sewer_connections"] / row["households"]) * 100
-                if pd.notna(row["households"]) and row["households"] != 0 else 0,
-                axis=1
-            ).round(2)
-            
-            # Drop NaN and zero values before calculating mean
-            valid_coverage = df_filtered["Sewer_Coverage"].replace(0, pd.NA).dropna()
-            
-            if len(valid_coverage) > 0:
-                avg_coverage = valid_coverage.mean()
-                st.metric(
-                    label="Sewer Coverage",
-                    value=f"{avg_coverage:.1f}%",
-                    help="% of households with sewer connections - Category: Access"
-                )
-                
-                # Chart
-                x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
-                if x_col in df_filtered.columns:
-                    plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='Sewer_Coverage', 
-                        chart_label="Sewer Coverage",
-                        unit="(%)",
-                        color_col='country'
-                    )
-            else:
-                st.warning("No valid sewer coverage data available")
-        else:
-            st.warning("Sewer connection data not available")
 
-with col2:
-    # KPI 2: Wastewater Safely Treated
-    df = s_service_df.copy()
-    if not df.empty and filter_col in df.columns:
-        df_filtered = df.copy()
-        if selected_country and selected_country != 'No countries found':
-            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
-        
-        # Calculate Wastewater Treatment Rate
-        if 'ww_treated' in df_filtered.columns and 'ww_collected' in df_filtered.columns:
-            df_filtered["WW_Treated_Pct"] = df_filtered.apply(
-                lambda row: (row["ww_treated"] / row["ww_collected"]) * 100
-                if pd.notna(row["ww_collected"]) and row["ww_collected"] != 0 else 0,
-                axis=1
-            ).round(2)
-            
-            # Drop NaN and zero values before calculating mean
-            valid_treated = df_filtered["WW_Treated_Pct"].replace(0, pd.NA).dropna()
-            
-            if len(valid_treated) > 0:
-                avg_treated = valid_treated.mean()
-                st.metric(
-                    label="Wastewater Safely Treated",
-                    value=f"{avg_treated:.1f}%",
-                    help="% of collected wastewater that is treated - Category: Efficiency & Environmental"
-                )
-                
-                # Chart
-                x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
-                if x_col in df_filtered.columns:
-                    plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='WW_Treated_Pct', 
-                        chart_label="Wastewater Safely Treated",
-                        unit="(%)",
-                        color_col='country'
-                    )
-            else:
-                st.warning("No valid wastewater treatment data available")
-        else:
-            st.warning("Wastewater treatment data not available")
 
+# Track metrics for summary
+summary_metrics = {}
+
+# ===========================
+# KPI: Sewer Unresolved Complaints (SUC) Rate
+# ===========================
 st.markdown("---")
-st.markdown("###  Service Quality")
+col_title, col_help = st.columns([0.95, 0.05])
+with col_title:
+    st.markdown("### Sewer Unresolved Complaints (SUC) Rate")
+with col_help:
+    st.markdown("", help="**Formula:**\n\n"
+        "UC Rate for each city per month = (complaints - resolved) / complaints × 100\n\n"
+        "**Aggregation:** City × Month\n\n"
+        "**Tooltip:** UC = complaints - resolved\n\n"
+        "**File:** all_fin_service")
 
-# KPI 3: Customer Complaint Resolution Rate
-df = all_fin_service_df.copy()
-if not df.empty and filter_col in df.columns:
-    df_filtered = df.copy()
-    if selected_country and selected_country != 'No countries found':
-        df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
+if not fin_service_filtered.empty and 'complaints' in fin_service_filtered.columns and 'resolved' in fin_service_filtered.columns:
+    df_suc = fin_service_filtered.copy()
+    if 'date' in df_suc.columns:
+        df_suc['date'] = pd.to_datetime(df_suc['date'], errors='coerce')
+    else:
+        df_suc['date'] = pd.NaT
     
-    # Calculate Complaint Resolution Rate
-    if 'resolved' in df_filtered.columns and 'complaints' in df_filtered.columns:
-        df_filtered["Complaint_Resolution_Rate"] = df_filtered.apply(
-            lambda row: (row["resolved"] / row["complaints"]) * 100
-            if pd.notna(row["complaints"]) and row["complaints"] != 0 else 0,
-            axis=1
-        ).round(2)
+    # Create city column if not exists
+    if 'city' not in df_suc.columns:
+        df_suc['city'] = df_suc.get('country', 'Unknown')
+    
+    # Aggregate by city and month
+    df_suc['year_month'] = df_suc['date'].dt.to_period('M').astype(str)
+    
+    suc_agg = df_suc.groupby(['city', 'year_month']).agg({
+        'complaints': 'sum',
+        'resolved': 'sum'
+    }).reset_index()
+    
+    # Calculate SUC Rate
+    suc_agg['unresolved_complaints'] = suc_agg['complaints'] - suc_agg['resolved']
+    suc_agg['suc_rate'] = suc_agg.apply(
+        lambda row: safe_div(row['unresolved_complaints'], row['complaints']) * 100,
+        axis=1
+    )
+    
+    # Filter valid values (keep zeros; drop only missing complaints)
+    suc_agg = suc_agg[suc_agg['complaints'].notna()]
+    
+    if not suc_agg.empty:
+        # Display metrics
+        col1, col2, col3 = st.columns(3)
         
-        # Drop NaN and zero values before calculating mean
-        valid_resolution = df_filtered["Complaint_Resolution_Rate"].replace(0, pd.NA).dropna()
+        avg_suc = suc_agg['suc_rate'].mean()
+        total_unresolved = suc_agg['unresolved_complaints'].sum()
+        total_complaints = suc_agg['complaints'].sum()
         
-        if len(valid_resolution) > 0:
-            avg_resolution = valid_resolution.mean()
+        summary_metrics['avg_suc'] = avg_suc
+        
+        with col1:
+            delta_color = "inverse" if avg_suc > 10 else "normal"
             st.metric(
-                label="Customer Complaint Resolution Rate",
-                value=f"{avg_resolution:.1f}%",
-                help="% of customer complaints resolved - Category: Service Quality"
+                "Average UC Rate",
+                f"{avg_suc:.1f}%",
+                delta=f"{'High' if avg_suc > 10 else 'Good'}",
+                delta_color=delta_color,
+                help=f"UC = {total_unresolved:,.0f}"
+            )
+        
+        with col2:
+            st.metric(
+                "Total Unresolved",
+                f"{total_unresolved:,.0f}"
+            )
+        
+        with col3:
+            st.metric(
+                "Total Complaints",
+                f"{total_complaints:,.0f}"
+            )
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Column + Line Combo Chart
+            # Aggregate for single timeline (sum across cities)
+            suc_timeline = suc_agg.groupby('year_month').agg({
+                'complaints': 'sum',
+                'unresolved_complaints': 'sum',
+                'suc_rate': 'mean'
+            }).reset_index()
+            
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            # Column: Total complaints (categorical color from Okabe-Ito)
+            fig.add_trace(
+                go.Bar(
+                    x=suc_timeline['year_month'],
+                    y=suc_timeline['complaints'],
+                    name='Total Complaints',
+                    marker_color=OKABE_ITO[1],
+                    text=suc_timeline['complaints'],
+                    textposition='none',
+                    hovertemplate='<b>%{x}</b><br>Total Complaints: %{y:,.0f}<br>Unresolved: %{customdata:,.0f}<extra></extra>',
+                    customdata=suc_timeline['unresolved_complaints']
+                ),
+                secondary_y=False
             )
             
-            # Chart
-            x_col = 'date' if 'date' in df_filtered.columns else 'date_MMYY'
-            if x_col in df_filtered.columns:
-                plotly_chart_with_labels(
-                    df_filtered, 
-                    x_col=x_col, 
-                    y_col='Complaint_Resolution_Rate', 
-                    chart_label="Customer Complaint Resolution Rate",
-                    unit="(%)",
-                    color_col='country'
+            # Line: UC Rate (Yellow/Light Orange)
+            fig.add_trace(
+                go.Scatter(
+                    x=suc_timeline['year_month'],
+                    y=suc_timeline['suc_rate'],
+                    name='UC Rate (%)',
+                    mode='lines+markers',
+                    line=dict(color=OKABE_ITO[0], width=3),
+                    marker=dict(size=8, color=OKABE_ITO[0]),
+                    hovertemplate='<b>%{x}</b><br>UC Rate: %{y:.1f}%<extra></extra>'
+                ),
+                secondary_y=True
+            )
+            
+            # Target line
+            # target line removed
+            
+            fig.update_layout(
+                title='UC Rate Over Time (Column + Line Combo)',
+                template='plotly_white',
+                hovermode='x unified',
+                height=400,
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial",
+                    align="left"
                 )
-        else:
-            st.warning("No valid complaint resolution data available")
-    else:
-        st.warning("Complaint resolution data not available")
+            )
+            fig.update_xaxes(title_text="Period")
+            fig.update_yaxes(title_text="Total Complaints", secondary_y=False)
+            fig.update_yaxes(title_text="UC Rate (%)", secondary_y=True)
+            # Adjust y-axes for better visibility when values have small spans
+            try:
+                set_smart_yaxis(fig, primary=suc_timeline['complaints'], secondary=suc_timeline['suc_rate'])
+            except Exception:
+                pass
 
-st.markdown("---")
+            try:
+                fig.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
 
-# ===========================
-# NETWORK EFFICIENCY
-# ===========================
-st.markdown("###  Network Maintenance & Efficiency")
-st.caption("Data Availability: Cameroon, Lesotho, Malawi, Uganda")
-
-df_service = all_fin_service_df.copy()
-if not df_service.empty and filter_col in df_service.columns:
-    df_filtered = df_service.copy()
-    if selected_country and selected_country != 'No countries found':
-        df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
-    
-    if 'blocks' in df_filtered.columns and 'sewer_length' in df_filtered.columns:
-        # Filter valid data (non-zero, non-null)
-        valid_network = df_filtered[
-            (df_filtered['blocks'].notna()) &
-            (df_filtered['blocks'] > 0) &
-            (df_filtered['sewer_length'].notna()) &
-            (df_filtered['sewer_length'] > 0)
-        ].copy()
+            st.plotly_chart(fig, width='stretch', key="suc_rate_trend")
         
-        if len(valid_network) > 0:
-            # Calculate blockages per km (Indicator #29)
-            valid_network['blockages_per_km'] = valid_network['blocks'] / valid_network['sewer_length']
+        with col2:
+            # City comparison
+            city_avg = suc_agg.groupby('city')['suc_rate'].mean().reset_index()
+            city_avg = city_avg.sort_values('suc_rate', ascending=True)
             
-            avg_blockages = valid_network['blockages_per_km'].mean()
+            fig_bar = px.bar(
+                city_avg, x='suc_rate', y='city', orientation='h',
+                title='Average UC Rate by City',
+                color='suc_rate',
+                color_continuous_scale=CB_SEQUENTIAL
+            )
+            # target line removed
+            fig_bar.update_layout(
+                xaxis_title="UC Rate (%)",
+                yaxis_title="City",
+                height=400,
+                showlegend=False
+            )
+            try:
+                fig_bar.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig_bar, width='stretch', key="suc_city_comparison")
+        
+        with st.expander("Understanding UC Rate"):
+            st.markdown("""
+            **Sewer Unresolved Complaints (UC) Rate** measures the percentage of customer complaints that remain unresolved.
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                delta_color = "normal" if avg_blockages < 2 else "inverse"
-                st.metric(
-                    "Blockages per km",
-                    f"{avg_blockages:.2f}",
-                    delta=f"Target: <2",
-                    delta_color=delta_color,
-                    help="Indicator #29: Network maintenance efficiency"
-                )
-            
-            with col2:
-                total_blocks = valid_network['blocks'].sum()
-                st.metric("Total Blockages", f"{total_blocks:,.0f}")
-            
-            with col3:
-                total_length = valid_network['sewer_length'].sum()
-                st.metric("Total Sewer Length", f"{total_length:,.1f} km")
-            
-            # Blockages trend
-            if 'date' in valid_network.columns and len(valid_network) > 1:
-                blockage_trend = valid_network.groupby('date').agg({
-                    'blocks': 'sum',
-                    'sewer_length': 'sum'
-                }).reset_index()
-                
-                # Filter out zero length records
-                blockage_trend = blockage_trend[blockage_trend['sewer_length'] > 0].copy()
-                
-                if len(blockage_trend) > 0:
-                    blockage_trend['blockages_per_km'] = blockage_trend['blocks'] / blockage_trend['sewer_length']
-                    
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=blockage_trend['date'],
-                        y=blockage_trend['blockages_per_km'],
-                        mode='lines+markers',
-                        line=dict(color='#e74c3c', width=2),
-                        marker=dict(size=8)
-                    ))
-                    
-                    # Add target line
-                    fig.add_hline(y=2, line_dash="dash", line_color="green", annotation_text="Target: 2 blocks/km")
-                    
-                    fig.update_layout(
-                        title="Blockages per km Over Time (Indicator #29)",
-                        xaxis_title="Date",
-                        yaxis_title="Blockages per km",
-                        height=350,
-                        hovermode='x unified'
-                    )
-                    st.plotly_chart(fig, use_container_width=True, key="blockages_trend")
-        else:
-            st.info("📄 Blockage data not available for selected filters (requires non-zero values)")
+            - **Formula**: `UC Rate = (complaints - resolved) / complaints × 100`
+            - **Tooltip**: `UC = complaints - resolved` (absolute number of unresolved complaints)
+            - **Target**: < 10% is considered good customer service
+            - **Source**: all_fin_service
+            """)
     else:
-        st.info("📄 Blockages or sewer length columns not found in data")
+        st.warning("No valid SUC data after filtering")
 else:
-    st.info("📄 Finance data required for network efficiency calculation")
+    st.warning("Complaint data not available. Required columns: complaints, resolved")
 
+
+# ===========================
+# KPI: Sewer Blocks per Kilometre (SBK)
+# ===========================
 st.markdown("---")
-st.markdown("### Fecal Sludge Management")
-col3, col4 = st.columns(2)
+col_title, col_help = st.columns([0.95, 0.05])
+with col_title:
+    st.markdown("### Sewer Blocks per Kilometre (SBK)")
+with col_help:
+    st.markdown("", help="**Formula:**\n\n"
+        "SBK for each city per month = blocks / sewer_length\n\n"
+        "**Aggregation:** City × Month\n\n"
+        "**Tooltip:** Sewer Blocks = blocks\n\n"
+        "**File:** all_fin_service")
 
-with col3:
-    # KPI 4a: Fecal Sludge Emptied
-    df = s_service_df.copy()
-    if not df.empty and filter_col in df.columns:
-        df_filtered = df.copy()
-        if selected_country and selected_country != 'No countries found':
-            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
+if not fin_service_filtered.empty and 'blocks' in fin_service_filtered.columns and 'sewer_length' in fin_service_filtered.columns:
+    df_sbk = fin_service_filtered.copy()
+    if 'date' in df_sbk.columns:
+        df_sbk['date'] = pd.to_datetime(df_sbk['date'], errors='coerce')
+    else:
+        df_sbk['date'] = pd.NaT
+    
+    # Create city column if not exists
+    if 'city' not in df_sbk.columns:
+        df_sbk['city'] = df_sbk.get('country', 'Unknown')
+    
+    # Aggregate by city and month
+    df_sbk['year_month'] = df_sbk['date'].dt.to_period('M').astype(str)
+    
+    sbk_agg = df_sbk.groupby(['city', 'year_month']).agg({
+        'blocks': 'sum',
+        'sewer_length': 'mean'  # Length stays constant, use mean
+    }).reset_index()
+    
+    # Calculate SBK
+    sbk_agg['sbk'] = sbk_agg.apply(
+        lambda row: safe_div(row['blocks'], row['sewer_length']),
+        axis=1
+    )
+    
+    # Filter valid values (keep zero-length rows if present; drop only missing sewer_length)
+    sbk_agg = sbk_agg[sbk_agg['sewer_length'].notna()]
+    
+    if not sbk_agg.empty:
+        # Display metrics
+        col1, col2, col3 = st.columns(3)
         
-        # Calculate FS Emptied Rate
-        if 'hh_emptied' in df_filtered.columns and 'households' in df_filtered.columns and 'sewer_connections' in df_filtered.columns:
-            df_filtered["FS_Emptied_Pct"] = df_filtered.apply(
-                lambda row: (row["hh_emptied"] / (row["households"] - row["sewer_connections"])) * 100
-                if pd.notna(row["households"]) and pd.notna(row["sewer_connections"]) 
-                and (row["households"] - row["sewer_connections"]) > 0 else 0,
+        avg_sbk = sbk_agg['sbk'].mean()
+        total_blocks = sbk_agg['blocks'].sum()
+        avg_length = sbk_agg['sewer_length'].mean()
+        
+        summary_metrics['avg_sbk'] = avg_sbk
+        
+        with col1:
+            delta_color = "inverse" if avg_sbk > 2 else "normal"
+            st.metric(
+                "Average SBK",
+                f"{avg_sbk:.2f}",
+                delta=f"{'High' if avg_sbk > 2 else 'Good'}",
+                delta_color=delta_color,
+                help=f"blocks = {total_blocks:,.0f}"
+            )
+        
+        with col2:
+            st.metric(
+                "Total Blocks",
+                f"{total_blocks:,.0f}"
+            )
+        
+        with col3:
+            st.metric(
+                "Avg Sewer Length",
+                f"{avg_length:,.1f} km"
+            )
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Wide line chart with rolling average
+            sbk_timeline = sbk_agg.groupby('year_month').agg({
+                'sbk': 'mean',
+                'blocks': 'sum'
+            }).reset_index()
+            
+            # Calculate rolling average (3-month)
+            sbk_timeline['rolling_avg'] = sbk_timeline['sbk'].rolling(window=3, min_periods=1).mean()
+            
+            fig = go.Figure()
+            
+            # Line with points: SBK (Blue)
+            fig.add_trace(
+                go.Scatter(
+                    x=sbk_timeline['year_month'],
+                    y=sbk_timeline['sbk'],
+                    name='SBK',
+                    mode='lines+markers',
+                    line=dict(color='#2E86AB', width=2),
+                    marker=dict(size=8, color='#2E86AB'),
+                    hovertemplate='<b>%{x}</b><br>SBK: %{y:.2f}<br>Blocks: %{customdata:,.0f}<extra></extra>',
+                    customdata=sbk_timeline['blocks']
+                )
+            )
+            
+            # Rolling average line (Light Blue)
+            fig.add_trace(
+                go.Scatter(
+                    x=sbk_timeline['year_month'],
+                    y=sbk_timeline['rolling_avg'],
+                    name='3-Month Avg',
+                    mode='lines',
+                    line=dict(color='#A9D6E5', width=3, dash='dash'),
+                    hovertemplate='<b>%{x}</b><br>3-Month Avg: %{y:.2f}<extra></extra>'
+                )
+            )
+            
+            # Target line
+            # target line removed
+            
+            fig.update_layout(
+                title='Sewer Blocks per km (Line + Rolling Average)',
+                xaxis_title='Period',
+                yaxis_title='Blocks per km',
+                template='plotly_white',
+                hovermode='x unified',
+                height=400,
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial",
+                    align="left"
+                )
+            )
+            
+            try:
+                set_smart_yaxis(fig, primary=sbk_timeline['sbk'])
+            except Exception:
+                pass
+
+            try:
+                fig.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig, width='stretch', key="sbk_trend")
+        
+        with col2:
+            # City comparison
+            city_avg = sbk_agg.groupby('city')['sbk'].mean().reset_index()
+            city_avg = city_avg.sort_values('sbk', ascending=True)
+            
+            fig_bar = px.bar(
+                city_avg, x='sbk', y='city', orientation='h',
+                title='Average SBK by City',
+                color='sbk',
+                color_continuous_scale=CB_SEQUENTIAL
+            )
+            # target line removed
+            fig_bar.update_layout(
+                xaxis_title="Blocks per km",
+                yaxis_title="City",
+                height=400,
+                showlegend=False
+            )
+            try:
+                fig_bar.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig_bar, width='stretch', key="sbk_city_comparison")
+        
+        with st.expander("Understanding SBK"):
+            st.markdown("""
+            **Sewer Blocks per Kilometre (SBK)** measures network maintenance efficiency.
+            
+            - **Formula**: `SBK = blocks / sewer_length`
+            - **Tooltip**: `Sewer Blocks = blocks` (absolute number of blockages)
+            - **Target**: < 2 blocks/km indicates good maintenance
+            - **Source**: all_fin_service
+            """)
+    else:
+        st.warning("No valid SBK data after filtering")
+else:
+    st.warning("Block/sewer length data not available. Required columns: blocks, sewer_length")
+
+
+# ===========================
+# KPI: Sewer Revenue Coverage (SRC) Rate
+# ===========================
+st.markdown("---")
+col_title, col_help = st.columns([0.95, 0.05])
+with col_title:
+    st.markdown("### Sewer Revenue Coverage (SRC) Rate")
+with col_help:
+    st.markdown("", help="**Formula:**\n\n"
+        "SRC Rate for each city per month = (sewer_revenue / opex) × 100\n\n"
+        "**Aggregation:** City × Month\n\n"
+        "**Tooltip:** SRC Amount = sewer_revenue\n\n"
+        "**File:** all_fin_service")
+
+if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.columns and 'opex' in fin_service_filtered.columns:
+    df_src = fin_service_filtered.copy()
+    if 'date' in df_src.columns:
+        df_src['date'] = pd.to_datetime(df_src['date'], errors='coerce')
+    else:
+        df_src['date'] = pd.NaT
+    
+    # Create city column if not exists
+    if 'city' not in df_src.columns:
+        df_src['city'] = df_src.get('country', 'Unknown')
+    
+    # Aggregate by city and month
+    df_src['year_month'] = df_src['date'].dt.to_period('M').astype(str)
+    
+    src_agg = df_src.groupby(['city', 'year_month']).agg({
+        'sewer_revenue': 'sum',
+        'opex': 'sum'
+    }).reset_index()
+    
+    # Calculate SRC Rate
+    src_agg['src_rate'] = src_agg.apply(
+        lambda row: safe_div(row['sewer_revenue'], row['opex']) * 100,
+        axis=1
+    )
+    
+    # Filter valid values (keep zero opex rows; drop only missing values)
+    src_agg = src_agg[src_agg['opex'].notna()]
+    
+    if not src_agg.empty:
+        # Display metrics
+        col1, col2, col3 = st.columns(3)
+        
+        avg_src = src_agg['src_rate'].mean()
+        total_revenue = src_agg['sewer_revenue'].sum()
+        total_opex = src_agg['opex'].sum()
+        
+        summary_metrics['avg_src'] = avg_src
+        
+        with col1:
+            delta_color = "inverse" if avg_src < 100 else "normal"
+            st.metric(
+                "Average SRC Rate",
+                f"{avg_src:.1f}%",
+                delta=f"{'Good' if avg_src >= 100 else 'Below Target'}",
+                delta_color=delta_color,
+                help=f"sewer_revenue = {total_revenue:,.0f}"
+            )
+        
+        with col2:
+            st.metric(
+                "Total Sewer Revenue",
+                f"{total_revenue:,.0f}"
+            )
+        
+        with col3:
+            st.metric(
+                "Total OpEx",
+                f"{total_opex:,.0f}"
+            )
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Line chart with area fill
+            src_timeline = src_agg.groupby('year_month').agg({
+                'sewer_revenue': 'sum',
+                'opex': 'sum',
+                'src_rate': 'mean'
+            }).reset_index()
+            
+            fig = go.Figure()
+            
+            # Line: SRC Rate with area fill (Teal/Green gradient)
+            fig.add_trace(
+                go.Scatter(
+                    x=src_timeline['year_month'],
+                    y=src_timeline['src_rate'],
+                    name='SRC Rate (%)',
+                    mode='lines+markers',
+                    line=dict(color='#0D7C66', width=3),
+                    marker=dict(size=8),
+                    fill='tozeroy',
+                    fillcolor='rgba(13, 124, 102, 0.2)',
+                    hovertemplate='<b>%{x}</b><br>SRC Rate: %{y:.1f}%<br>Revenue: %{customdata[0]:,.0f}<br>OpEx: %{customdata[1]:,.0f}<extra></extra>',
+                    customdata=src_timeline[['sewer_revenue', 'opex']].values
+                )
+            )
+            
+            # Target line
+            # target line removed
+            
+            fig.update_layout(
+                title='SRC Rate Over Time',
+                xaxis_title='Period',
+                yaxis_title='SRC Rate (%)',
+                template='plotly_white',
+                hovermode='x unified',
+                height=400,
+                showlegend=True,
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial",
+                    align="left"
+                )
+            )
+            
+            try:
+                set_smart_yaxis(fig, primary=src_timeline['src_rate'])
+            except Exception:
+                pass
+
+            try:
+                fig.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig, width='stretch', key="src_rate_trend")
+        
+        with col2:
+            # City comparison
+            city_avg = src_agg.groupby('city')['src_rate'].mean().reset_index()
+            city_avg = city_avg.sort_values('src_rate', ascending=False)
+            
+            fig_bar = px.bar(
+                city_avg, x='src_rate', y='city', orientation='h',
+                title='Average SRC Rate by City',
+                color='src_rate',
+                color_continuous_scale=CB_SEQUENTIAL[::-1]
+            )
+            # target line removed
+            fig_bar.update_layout(
+                xaxis_title="SRC Rate (%)",
+                yaxis_title="City",
+                height=400,
+                showlegend=False
+            )
+            try:
+                fig_bar.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig_bar, width='stretch', key="src_city_comparison")
+        
+        with st.expander("Understanding SRC Rate"):
+            st.markdown("""
+            **Sewer Revenue Coverage (SRC) Rate** measures financial sustainability of sewer operations.
+            
+            - **Formula**: `SRC Rate = (sewer_revenue / opex) × 100`
+            - **Tooltip**: `SRC Amount = sewer_revenue` (total sewer revenue)
+            - **Target**: ≥ 100% indicates revenues cover operational costs
+            - **Source**: all_fin_service
+            """)
+    else:
+        st.warning("No valid SRC data after filtering")
+else:
+    st.warning("Revenue/opex data not available. Required columns: sewer_revenue, opex")
+
+
+# ===========================
+# REFERENCE: Sanitation Staffing per Sewer Connection (SSS) Rate
+# ===========================
+st.markdown("---")
+col_title, col_help = st.columns([0.95, 0.05])
+with col_title:
+    st.markdown("### Sanitation Staffing per Sewer Connection (SSS) Rate")
+with col_help:
+    st.markdown("", help="**Formula:**\n\n"
+        "city_sewer_connections per month = Sum of sewer_connections across all zones of a city\n\n"
+        "SSS Rate for each city per month = (san_staff / city_sewer_connections) × 1000\n\n"
+        "**Aggregation:** City × Month\n\n"
+        "**Tooltip:** san_staff\n\n"
+        "**Files:** s_service and all_fin_service")
+
+if not fin_service_filtered.empty and not s_service_filtered.empty:
+    df_fin = fin_service_filtered.copy()
+    df_san = s_service_filtered.copy()
+    
+    if 'date' in df_fin.columns:
+        df_fin['date'] = pd.to_datetime(df_fin['date'], errors='coerce')
+    else:
+        df_fin['date'] = pd.NaT
+    if 'date' in df_san.columns:
+        df_san['date'] = pd.to_datetime(df_san['date'], errors='coerce')
+    else:
+        df_san['date'] = pd.NaT
+    
+    # Create city column - use country for both since we don't have zone-to-city mapping
+    # This aggregates all zones within a country
+    if 'city' not in df_fin.columns:
+        df_fin['city'] = df_fin.get('country', 'Unknown')
+    else:
+        # If city exists but we need country-level aggregation for matching with s_service
+        df_fin['city'] = df_fin.get('country', 'Unknown')
+    
+    # Extract year_month
+    df_fin['year_month'] = df_fin['date'].dt.to_period('M').astype(str)
+    df_san['year_month'] = df_san['date'].dt.to_period('M').astype(str)
+    
+    # Aggregate sewer connections by country (sum across zones) per month
+    # Note: Using country as "city" since we don't have zone-to-city mapping
+    if 'sewer_connections' in df_san.columns:
+        df_san['city'] = df_san.get('country', 'Unknown')
+        
+        conn_agg = df_san.groupby(['city', 'year_month']).agg({
+            'sewer_connections': 'sum'
+        }).reset_index()
+        conn_agg.rename(columns={'sewer_connections': 'city_sewer_connections'}, inplace=True)
+        
+        # Get staffing data
+        if 'san_staff' in df_fin.columns:
+            staff_agg = df_fin.groupby(['city', 'year_month']).agg({
+                'san_staff': 'sum'
+            }).reset_index()
+            
+            # Merge
+            sss_data = staff_agg.merge(conn_agg, on=['city', 'year_month'], how='inner')
+            
+            # Calculate SSS Rate (staff per 1000 connections)
+            sss_data['sss_rate'] = sss_data.apply(
+                lambda row: safe_div(row['san_staff'], row['city_sewer_connections']) * 1000,
                 axis=1
-            ).round(2)
+            )
             
-            # Drop NaN and zero values before calculating mean
-            valid_emptied = df_filtered["FS_Emptied_Pct"].replace(0, pd.NA).dropna()
+            # Filter valid (keep zero connections rows; drop only missing values)
+            sss_data = sss_data[sss_data['city_sewer_connections'].notna()]
             
-            if len(valid_emptied) > 0:
-                avg_emptied = valid_emptied.mean()
-                st.metric(
-                    label="Fecal Sludge Emptied",
-                    value=f"{avg_emptied:.1f}%",
-                    help="% of non-sewered households with fecal sludge emptied - Category: Access & Environmental"
+            if not sss_data.empty:
+                col1, col2, col3 = st.columns(3)
+                
+                avg_sss = sss_data['sss_rate'].mean()
+                total_staff = sss_data['san_staff'].sum()
+                total_connections = sss_data['city_sewer_connections'].sum()
+                
+                summary_metrics['avg_sss'] = avg_sss
+                
+                with col1:
+                    st.metric(
+                        "Avg SSS Rate",
+                        f"{avg_sss:.2f}",
+                        delta="Staff per 1000 connections",
+                        help=f"san_staff = {total_staff:,.0f}"
+                    )
+                
+                with col2:
+                    st.metric(
+                        "Total San Staff",
+                        f"{total_staff:,.0f}"
+                    )
+                
+                with col3:
+                    st.metric(
+                        "Total Connections",
+                        f"{total_connections:,.0f}"
+                    )
+                
+                # Charts
+                # City dropdown selector
+                cities = sorted(sss_data['city'].unique())
+                
+                if len(cities) > 1:
+                    selected_city_sss = st.selectbox(
+                        "Select City/Country for SSS Trend:",
+                        options=['All'] + list(cities),
+                        key="sss_city_selector"
+                    )
+                else:
+                    selected_city_sss = cities[0] if cities else None
+                
+                if selected_city_sss and selected_city_sss != 'All':
+                    sss_display = sss_data[sss_data['city'] == selected_city_sss]
+                else:
+                    # Aggregate all cities
+                    sss_display = sss_data.groupby('year_month').agg({
+                        'san_staff': 'sum',
+                        'city_sewer_connections': 'sum',
+                        'sss_rate': 'mean'
+                    }).reset_index()
+                
+                # Line chart (Teal)
+                fig = go.Figure()
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=sss_display['year_month'],
+                        y=sss_display['sss_rate'],
+                        name='SSS Rate',
+                        mode='lines+markers',
+                        line=dict(color='#00BFA5', width=3),
+                        marker=dict(size=8),
+                        hovertemplate='<b>%{x}</b><br>SSS Rate: %{y:.2f}<br>Staff: %{customdata[0]:,.0f}<br>Connections: %{customdata[1]:,.0f}<extra></extra>',
+                        customdata=sss_display[['san_staff', 'city_sewer_connections']].values if 'san_staff' in sss_display.columns else None
+                    )
                 )
                 
-                # Chart
-                x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
-                if x_col in df_filtered.columns:
-                    plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='FS_Emptied_Pct', 
-                        chart_label="Fecal Sludge Emptied (% of non-sewered HHs)",
-                        unit="(%)",
-                        color_col='country'
-                    )
-            else:
-                st.warning("No valid fecal sludge emptying data available")
-        else:
-            st.warning("Fecal sludge emptying data not available")
-
-with col4:
-    # KPI 4b: Fecal Sludge Treated
-    df = s_service_df.copy()
-    if not df.empty and filter_col in df.columns:
-        df_filtered = df.copy()
-        if selected_country and selected_country != 'No countries found':
-            df_filtered = df_filtered[df_filtered[filter_col] == selected_country]
-        
-        # Calculate FS Treated Rate
-        # Note: We need estimated volume emptied - using hh_emptied as proxy
-        if 'fs_treated' in df_filtered.columns and 'hh_emptied' in df_filtered.columns:
-            # Assuming average volume per household (this should be adjusted based on actual data)
-            avg_volume_per_hh = 2.0  # m3 - adjust as needed
-            df_filtered['estimated_volume_emptied'] = df_filtered['hh_emptied'] * avg_volume_per_hh
-            
-            df_filtered["FS_Treated_Pct"] = df_filtered.apply(
-                lambda row: (row["fs_treated"] / row["estimated_volume_emptied"]) * 100
-                if pd.notna(row["estimated_volume_emptied"]) and row["estimated_volume_emptied"] > 0 else 0,
-                axis=1
-            ).round(2)
-            
-            # Drop NaN and zero values before calculating mean
-            valid_treated = df_filtered["FS_Treated_Pct"].replace(0, pd.NA).dropna()
-            
-            if len(valid_treated) > 0:
-                avg_treated = valid_treated.mean()
-                st.metric(
-                    label="Fecal Sludge Treated",
-                    value=f"{avg_treated:.1f}%",
-                    help="% of emptied fecal sludge that is treated - Category: Access & Environmental"
-                )
+                title_text = f'SSS Rate Over Time - {selected_city_sss}' if selected_city_sss != 'All' else 'SSS Rate Over Time - All Cities'
                 
-                # Chart
-                x_col = 'date_MMYY' if 'date_MMYY' in df_filtered.columns else 'date'
-                if x_col in df_filtered.columns:
-                    plotly_chart_with_labels(
-                        df_filtered, 
-                        x_col=x_col, 
-                        y_col='FS_Treated_Pct', 
-                        chart_label="Fecal Sludge Treated (% of FS emptied)",
-                        unit="(%)",
-                        color_col='country'
+                fig.update_layout(
+                    title=title_text,
+                    xaxis_title='Period',
+                    yaxis_title='Staff per 1000 connections',
+                    template='plotly_white',
+                    hovermode='x unified',
+                    height=400,
+                    showlegend=False,
+                    hoverlabel=dict(
+                        bgcolor="white",
+                        font_size=12,
+                        font_family="Arial",
+                        align="left"
                     )
+                )
+                try:
+                    set_smart_yaxis(fig, primary=sss_display['sss_rate'])
+                except Exception:
+                    pass
+
+                try:
+                    fig.update_layout(colorway=OKABE_ITO)
+                except Exception:
+                    pass
+
+                st.plotly_chart(fig, use_container_width=True, key="sss_trend")
+                
+                # City comparison bar chart
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    city_avg = sss_data.groupby('city')['sss_rate'].mean().reset_index()
+                    city_avg = city_avg.sort_values('sss_rate', ascending=True)
+                    
+                    fig_bar = px.bar(
+                        city_avg, x='sss_rate', y='city', orientation='h',
+                        title='Average SSS Rate by Country',
+                        color='sss_rate',
+                        color_continuous_scale=CB_SEQUENTIAL
+                    )
+                    fig_bar.update_layout(
+                        xaxis_title="Staff per 1000 connections",
+                        yaxis_title="Country",
+                        height=300,
+                        showlegend=False
+                    )
+                    try:
+                        fig_bar.update_layout(colorway=OKABE_ITO)
+                    except Exception:
+                        pass
+
+                    st.plotly_chart(fig_bar, use_container_width=True, key="sss_city_comparison")
+                
+                with st.expander("Understanding SSS Rate"):
+                    st.markdown("""
+                    **Sanitation Staffing per Sewer Connection (SSS) Rate** measures staffing adequacy.
+                    
+                    - **Formula**: `SSS Rate = (san_staff / country_sewer_connections) × 1000`
+                    - **san_staff**: Number of sanitation staff (shown in tooltip)
+                    - **country_sewer_connections**: Sum of sewer connections across all zones per country per month
+                    - **Rate**: Staff per 1000 connections
+                    - **Aggregation**: By country per month
+                    
+                    Note: Aggregated at country level since zone-to-city mapping is not available.
+                    """)
             else:
-                st.warning("No valid fecal sludge treatment data available")
+                st.warning("No valid SSS data after merging")
         else:
-            st.warning("Fecal sludge treatment data not available")
+            st.warning("san_staff column not found")
+    else:
+        st.warning("sewer_connections column not found in s_service")
+else:
+    st.warning("Financial or sanitation service data not available for SSS calculation")
+
+
+# ===========================
+# KPI: Sanitation Access (SA) over time
+# ===========================
+st.markdown("---")
+col_title, col_help = st.columns([0.95, 0.05])
+with col_title:
+    st.markdown("### Sanitation Access (SA) Over Time")
+with col_help:
+    st.markdown("", help="**Metric:** Sanitation Access (SA) over time (stacked bar chart)\n\n"
+        "**Formula:** Direct columns for each zone per year:\n"
+        "safely_managed_pct, basic_pct, limited_pct, unimproved_pct, open_def_pct\n\n"
+        "**Aggregation:** Zone × Year\n\n"
+        "**Tooltips:** safely_managed, basic, limited, unimproved, open_def (absolute numbers)\n\n"
+        "**File:** s_access")
+
+if not s_access_filtered.empty:
+    df_access = s_access_filtered.copy()
+    
+    # Check for required columns
+    access_cols = ['safely_managed_pct', 'basic_pct', 'limited_pct', 'unimproved_pct', 'open_def_pct']
+    tooltip_cols = ['safely_managed', 'basic', 'limited', 'unimproved', 'open_def']
+    
+    available_cols = [c for c in access_cols if c in df_access.columns]
+    
+    if available_cols:
+        # Get year column
+        year_col = 'year' if 'year' in df_access.columns else 'date_YY' if 'date_YY' in df_access.columns else None
+        
+        if year_col:
+            # Aggregate by zone and year
+            zone_col = 'zone' if 'zone' in df_access.columns else 'country'
+            
+            agg_cols = {c: 'mean' for c in available_cols}
+            for tc in tooltip_cols:
+                if tc in df_access.columns:
+                    agg_cols[tc] = 'sum'
+            
+            access_agg = df_access.groupby([zone_col, year_col]).agg(agg_cols).reset_index()
+            
+            # Create 100% stacked bar chart with specified colors
+            # Define color mapping for sanitation access levels
+            color_map = {
+                'Safely Managed': '#2D5F2E',      # Dark Green
+                'Basic': '#4A9B4A',                # Medium Green
+                'Limited': '#90EE90',              # Light Green
+                'Unimproved': '#D2B48C',           # Light Brown
+                'Open Def': '#F5DEB3'              # Beige
+            }
+            
+            # Prepare data for stacked bar
+            fig = go.Figure()
+            
+            # Get unique years sorted
+            years = sorted(access_agg[year_col].unique())
+            
+            # Add traces for each access type
+            for col in available_cols:
+                label = col.replace('_pct', '').replace('_', ' ').title()
+                
+                # Aggregate across zones for each year
+                yearly_avg = access_agg.groupby(year_col)[col].mean().reindex(years)
+                
+                # Get tooltip data (absolute numbers)
+                tooltip_col = tooltip_cols[available_cols.index(col)] if available_cols.index(col) < len(tooltip_cols) else None
+                if tooltip_col and tooltip_col in access_agg.columns:
+                    yearly_abs = access_agg.groupby(year_col)[tooltip_col].sum().reindex(years)
+                    customdata = yearly_abs.values
+                    hovertemplate = f'<b>{label}</b><br>Percentage: %{{y:.1f}}%<br>Population: %{{customdata:,.0f}}<extra></extra>'
+                else:
+                    customdata = None
+                    hovertemplate = f'<b>{label}</b><br>Percentage: %{{y:.1f}}%<extra></extra>'
+                
+                fig.add_trace(
+                    go.Bar(
+                        x=years,
+                        y=yearly_avg.values,
+                        name=label,
+                        marker_color=color_map.get(label, '#cccccc'),
+                        customdata=customdata,
+                        hovertemplate=hovertemplate
+                    )
+                )
+            
+            fig.update_layout(
+                title='Sanitation Access Over Time (100% Stacked Bar)',
+                xaxis_title='Year',
+                yaxis_title='Percentage (%)',
+                barmode='stack',
+                template='plotly_white',
+                height=500,
+                legend_title='Access Level',
+                hovermode='x unified',
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial",
+                    align="left"
+                )
+            )
+            
+            try:
+                fig.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig, width='stretch', key="sanitation_access_stacked")
+            
+            # Zone selector for detail view
+            if zone_col in access_agg.columns:
+                zones = access_agg[zone_col].unique()
+                selected_zone = st.selectbox("Select Zone for Details:", zones, key="zone_selector")
+                
+                zone_data = access_agg[access_agg[zone_col] == selected_zone]
+                
+                if not zone_data.empty:
+                    # Show latest values
+                    latest = zone_data.sort_values(year_col).iloc[-1]
+                    
+                    cols = st.columns(len(available_cols))
+                    for i, col in enumerate(available_cols):
+                        with cols[i]:
+                            label = col.replace('_pct', '').replace('_', ' ').title()
+                            value = latest[col] if col in latest else 0
+                            tooltip_col = tooltip_cols[i] if i < len(tooltip_cols) else None
+                            tooltip_val = latest.get(tooltip_col, 'N/A') if tooltip_col else 'N/A'
+                            st.metric(
+                                label,
+                                f"{value:.1f}%",
+                                help=f"{tooltip_col}: {tooltip_val}" if tooltip_col else None
+                            )
+            
+            with st.expander("Understanding Sanitation Access"):
+                st.markdown("""
+                **Sanitation Access (SA)** shows the distribution of population across different sanitation service levels.
+                
+                - **Formula**: Direct columns (no calculation): safely_managed_pct, basic_pct, limited_pct, unimproved_pct, open_def_pct
+                - **Tooltips**: safely_managed, basic, limited, unimproved, open_def (absolute numbers)
+                - **Safely Managed**: Using improved facilities with safe disposal/treatment
+                - **Basic**: Using improved facilities not shared
+                - **Limited**: Using improved facilities shared
+                - **Unimproved**: Using unimproved facilities
+                - **Open Defecation**: No facilities
+                - **Source**: s_access
+                """)
+        else:
+            st.warning("No year column found in s_access data")
+    else:
+        st.warning("Access percentage columns not found in s_access data")
+else:
+    st.warning("Sanitation access data not available")
+
+
+# ===========================
+# KPI: Households Unconnected to Sanitation (HUS) Rate
+# ===========================
+st.markdown("---")
+col_title, col_help = st.columns([0.95, 0.05])
+with col_title:
+    st.markdown("### Households Unconnected to Sanitation (HUS) Rate")
+with col_help:
+    st.markdown("", help="**Formula:**\n\n"
+        "HUS Rate for each zone per month = (households - sewer_connections) / households × 100\n\n"
+        "**Aggregation:** Zone × Month\n\n"
+        "**Tooltip:** households - sewer_connections (unconnected households)\n\n"
+        "**File:** s_service")
+
+if not s_service_filtered.empty and 'households' in s_service_filtered.columns and 'sewer_connections' in s_service_filtered.columns:
+    df_hus = s_service_filtered.copy()
+    if 'date' in df_hus.columns:
+        df_hus['date'] = pd.to_datetime(df_hus['date'], errors='coerce')
+    else:
+        df_hus['date'] = pd.NaT
+    
+    # Get zone column
+    zone_col = 'zone' if 'zone' in df_hus.columns else 'country'
+    
+    # Create year_month
+    df_hus['year_month'] = df_hus['date'].dt.to_period('M').astype(str)
+    
+    # Aggregate by zone and month
+    hus_agg = df_hus.groupby([zone_col, 'year_month']).agg({
+        'households': 'sum',
+        'sewer_connections': 'sum'
+    }).reset_index()
+    
+    # Calculate HUS Rate
+    hus_agg['unconnected'] = hus_agg['households'] - hus_agg['sewer_connections']
+    hus_agg['hus_rate'] = hus_agg.apply(
+        lambda row: safe_div(row['unconnected'], row['households']) * 100,
+        axis=1
+    )
+    
+    # Filter valid (keep zero households rows; drop only missing values)
+    hus_agg = hus_agg[hus_agg['households'].notna()]
+    
+    if not hus_agg.empty:
+        col1, col2, col3 = st.columns(3)
+        
+        avg_hus = hus_agg['hus_rate'].mean()
+        total_unconnected = hus_agg['unconnected'].sum()
+        total_households = hus_agg['households'].sum()
+        
+        summary_metrics['avg_hus'] = avg_hus
+        
+        with col1:
+            delta_color = "inverse" if avg_hus > 50 else "normal"
+            st.metric(
+                "Average HUS Rate",
+                f"{avg_hus:.1f}%",
+                delta=f"{'High' if avg_hus > 50 else 'Good'}",
+                delta_color=delta_color,
+                help=f"households - sewer_connections = {total_unconnected:,.0f}"
+            )
+        
+        with col2:
+            st.metric(
+                "Total Unconnected",
+                f"{total_unconnected:,.0f}",
+                help="Total households without sewer connection"
+            )
+        
+        with col3:
+            st.metric(
+                "Total Households",
+                f"{total_households:,.0f}",
+                help="Total households in service area"
+            )
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Vertical column chart (Yellow/Orange)
+            hus_timeline = hus_agg.groupby('year_month').agg({
+                'unconnected': 'sum',
+                'households': 'sum',
+                'hus_rate': 'mean'
+            }).reset_index()
+            
+            # Determine color based on rate (alert if high)
+            colors = ['#FFA500' if rate > 50 else '#FFD700' for rate in hus_timeline['hus_rate']]
+            
+            fig = go.Figure()
+            
+            fig.add_trace(
+                go.Bar(
+                    x=hus_timeline['year_month'],
+                    y=hus_timeline['hus_rate'],
+                    name='HUS Rate',
+                    marker_color=colors,
+                    text=hus_timeline['hus_rate'].round(1),
+                    textposition='none',
+                    hovertemplate='<b>%{x}</b><br>HUS Rate: %{y:.1f}%<br>Unconnected: %{customdata:,.0f}<extra></extra>',
+                    customdata=hus_timeline['unconnected']
+                )
+            )
+            
+            # Target line
+            # target line removed
+            
+            fig.update_layout(
+                title='HUS Rate Over Time (Vertical Column Chart)',
+                xaxis_title='Period',
+                yaxis_title='HUS Rate (%)',
+                template='plotly_white',
+                hovermode='x unified',
+                height=400,
+                showlegend=False,
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial",
+                    align="left"
+                )
+            )
+            try:
+                set_smart_yaxis(fig, primary=hus_timeline['hus_rate'])
+            except Exception:
+                pass
+
+            try:
+                fig.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig, width='stretch', key="hus_trend")
+        
+        with col2:
+            zone_avg = hus_agg.groupby(zone_col)['hus_rate'].mean().reset_index()
+            zone_avg = zone_avg.sort_values('hus_rate', ascending=False)
+            
+            fig_bar = px.bar(
+                zone_avg, x='hus_rate', y=zone_col, orientation='h',
+                title=f'Average HUS Rate by {zone_col.title()}',
+                color='hus_rate',
+                color_continuous_scale=['green', 'yellow', 'red']
+            )
+            # target line removed
+            fig_bar.update_layout(
+                xaxis_title="HUS Rate (%)",
+                yaxis_title=zone_col.title(),
+                height=400,
+                showlegend=False
+            )
+            try:
+                fig_bar.update_layout(colorway=OKABE_ITO)
+            except Exception:
+                pass
+
+            st.plotly_chart(fig_bar, width='stretch', key="hus_zone_comparison")
+        
+        with st.expander("Understanding HUS Rate"):
+            st.markdown("""
+            **Households Unconnected to Sanitation (HUS) Rate** measures sanitation coverage gap.
+            
+            - **Formula**: `HUS Rate = (households - sewer_connections) / households × 100`
+            - **Tooltip**: `households - sewer_connections` (absolute number of unconnected households)
+            - **Target**: < 50% indicates good coverage
+            - **Source**: s_service
+            """)
+    else:
+        st.warning("No valid HUS data after filtering")
+else:
+    st.warning("Household/connection data not available. Required columns: households, sewer_connections")
+
+
+# ===========================
+# Summary Section
+# ===========================
+st.markdown("---")
+st.markdown("### Sanitation Operations Summary")
+
+summary_data = []
+
+if 'avg_suc' in summary_metrics:
+    avg = summary_metrics['avg_suc']
+    summary_data.append({
+        'KPI': 'Sewer Unresolved Complaints Rate',
+        'Value': f"{avg:.1f}%",
+        'Target': '< 10%',
+        'Status': 'Good' if avg < 10 else 'Moderate' if avg < 20 else 'High'
+    })
+
+if 'avg_sbk' in summary_metrics:
+    avg = summary_metrics['avg_sbk']
+    summary_data.append({
+        'KPI': 'Sewer Blocks per km',
+        'Value': f"{avg:.2f}",
+        'Target': '< 2',
+        'Status': 'Good' if avg < 2 else 'Moderate' if avg < 5 else 'High'
+    })
+
+if 'avg_src' in summary_metrics:
+    avg = summary_metrics['avg_src']
+    summary_data.append({
+        'KPI': 'Sewer Revenue Coverage Rate',
+        'Value': f"{avg:.1f}%",
+        'Target': '≥ 100%',
+        'Status': 'Good' if avg >= 100 else 'Below Target' if avg >= 80 else 'Low'
+    })
+
+if 'avg_sss' in summary_metrics:
+    avg = summary_metrics['avg_sss']
+    summary_data.append({
+        'KPI': 'Sanitation Staff per 1000 Connections',
+        'Value': f"{avg:.2f}",
+        'Target': 'Optimal varies',
+        'Status': 'Monitor'
+    })
+
+if 'avg_hus' in summary_metrics:
+    avg = summary_metrics['avg_hus']
+    summary_data.append({
+        'KPI': 'Households Unconnected Rate',
+        'Value': f"{avg:.1f}%",
+        'Target': '< 50%',
+        'Status': 'Good' if avg < 50 else 'Moderate' if avg < 70 else 'High'
+    })
+
+if summary_data:
+    summary_df = pd.DataFrame(summary_data)
+    st.dataframe(summary_df, width='stretch', hide_index=True)
+else:
+    st.info("No summary data available. Please check data availability.")
+
 
 st.markdown("---")
 st.markdown("""
-### Sanitation Service Dashboard Summary
-This dashboard provides detailed sanitation service performance metrics:
+### Sanitation Operations Dashboard Summary
 
-- **Access**: Sewer coverage showing household connections to sewer network
-- **Efficiency & Environmental**: Wastewater treatment rates showing environmental protection
-- **Service Quality**: Customer complaint resolution showing service responsiveness
-- **Fecal Sludge Management**: Coverage and treatment of fecal sludge from non-sewered households
+This dashboard tracks **Operational Performance** for sanitation services through key indicators:
 
-Use the sidebar to filter by country and explore detailed trends over time.
+1. **UC Rate**: Unresolved customer complaints rate = (complaints - resolved) / complaints × 100
+2. **SBK**: Sewer blocks per kilometer = blocks / sewer_length
+3. **SRC Rate**: Sewer revenue coverage = (sewer_revenue / opex) × 100
+4. **Sanitation Access**: Population distribution by service level (safely_managed_pct, basic_pct, limited_pct, unimproved_pct, open_def_pct)
+5. **HUS Rate**: Households unconnected to sanitation = (households - sewer_connections) / households × 100
+
+**Data Sources**: all_fin_service, s_service, s_access
+
+Use the sidebar filters to explore different countries and time periods.
 """)
