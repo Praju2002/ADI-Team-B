@@ -239,7 +239,7 @@ def get_clean_countries(df, col='country'):
             continue
         cleaned.append(s)
     
-    return sorted(set(cleaned)) if cleaned else ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+        return sorted(set(cleaned)) if cleaned else ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
 
 def get_status_color(value, target, higher_is_better=True):
