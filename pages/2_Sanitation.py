@@ -391,12 +391,9 @@ if not fin_service_filtered.empty and 'complaints' in fin_service_filtered.colum
         summary_metrics['avg_suc'] = avg_suc
         
         with col1:
-            delta_color = "inverse" if avg_suc > 10 else "normal"
             st.metric(
                 "Average UC Rate",
                 f"{avg_suc:.1f}%",
-                delta=f"{'High' if avg_suc > 10 else 'Good'}",
-                delta_color=delta_color,
                 help=f"UC = {total_unresolved:,.0f}"
             )
         
@@ -519,7 +516,6 @@ if not fin_service_filtered.empty and 'complaints' in fin_service_filtered.colum
             
             - **Formula**: `UC Rate = (complaints - resolved) / complaints × 100`
             - **Tooltip**: `UC = complaints - resolved` (absolute number of unresolved complaints)
-            - **Target**: < 10% is considered good customer service
             - **Source**: all_fin_service
             """)
     else:
@@ -581,12 +577,9 @@ if not fin_service_filtered.empty and 'blocks' in fin_service_filtered.columns a
         summary_metrics['avg_sbk'] = avg_sbk
         
         with col1:
-            delta_color = "inverse" if avg_sbk > 2 else "normal"
             st.metric(
                 "Average SBK",
                 f"{avg_sbk:.2f}",
-                delta=f"{'High' if avg_sbk > 2 else 'Good'}",
-                delta_color=delta_color,
                 help=f"blocks = {total_blocks:,.0f}"
             )
         
@@ -706,7 +699,6 @@ if not fin_service_filtered.empty and 'blocks' in fin_service_filtered.columns a
             
             - **Formula**: `SBK = blocks / sewer_length`
             - **Tooltip**: `Sewer Blocks = blocks` (absolute number of blockages)
-            - **Target**: < 2 blocks/km indicates good maintenance
             - **Source**: all_fin_service
             """)
     else:
@@ -768,12 +760,9 @@ if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.co
         summary_metrics['avg_src'] = avg_src
         
         with col1:
-            delta_color = "inverse" if avg_src < 100 else "normal"
             st.metric(
                 "Average SRC Rate",
                 f"{avg_src:.1f}%",
-                delta=f"{'Good' if avg_src >= 100 else 'Below Target'}",
-                delta_color=delta_color,
                 help=f"sewer_revenue = {total_revenue:,.0f}"
             )
         
@@ -880,7 +869,6 @@ if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.co
             
             - **Formula**: `SRC Rate = (sewer_revenue / opex) × 100`
             - **Tooltip**: `SRC Amount = sewer_revenue` (total sewer revenue)
-            - **Target**: ≥ 100% indicates revenues cover operational costs
             - **Source**: all_fin_service
             """)
     else:
@@ -970,7 +958,6 @@ if not fin_service_filtered.empty and not s_service_filtered.empty:
                     st.metric(
                         "Avg SSS Rate",
                         f"{avg_sss:.2f}",
-                        delta="Staff per 1000 connections",
                         help=f"san_staff = {total_staff:,.0f}"
                     )
                 
@@ -1307,12 +1294,9 @@ if not s_service_filtered.empty and 'households' in s_service_filtered.columns a
         summary_metrics['avg_hus'] = avg_hus
         
         with col1:
-            delta_color = "inverse" if avg_hus > 50 else "normal"
             st.metric(
                 "Average HUS Rate",
                 f"{avg_hus:.1f}%",
-                delta=f"{'High' if avg_hus > 50 else 'Good'}",
-                delta_color=delta_color,
                 help=f"households - sewer_connections = {total_unconnected:,.0f}"
             )
         
@@ -1393,18 +1377,34 @@ if not s_service_filtered.empty and 'households' in s_service_filtered.columns a
             zone_avg = hus_agg.groupby(zone_col)['hus_rate'].mean().reset_index()
             zone_avg = zone_avg.sort_values('hus_rate', ascending=False)
             
+            # Show horizontal bar chart with dynamic x-axis range and value labels
             fig_bar = px.bar(
                 zone_avg, x='hus_rate', y=zone_col, orientation='h',
                 title=f'Average HUS Rate by {zone_col.title()}',
                 color='hus_rate',
-                color_continuous_scale=['green', 'yellow', 'red']
+                color_continuous_scale=['green', 'yellow', 'red'],
+                text=zone_avg['hus_rate'].round(1)
             )
+
+            # Compute a tight x-axis range around the data so differences in the 90s are visible
+            try:
+                min_r = float(zone_avg['hus_rate'].min())
+                max_r = float(zone_avg['hus_rate'].max())
+                span = max_r - min_r
+                pad = max(0.5, span * 0.1)  # at least 0.5 percentage points padding
+                x0 = max(0, min_r - pad)
+                x1 = min(100, max_r + pad)
+            except Exception:
+                x0, x1 = 0, 100
+
             # target line removed
+            fig_bar.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
             fig_bar.update_layout(
-                xaxis_title="HUS Rate (%)",
+                xaxis=dict(title="HUS Rate (%)", range=[x0, x1], tickformat='.1f'),
                 yaxis_title=zone_col.title(),
                 height=400,
-                showlegend=False
+                showlegend=False,
+                margin=dict(l=120, r=40, t=60, b=40)
             )
             try:
                 fig_bar.update_layout(colorway=OKABE_ITO)
@@ -1419,7 +1419,6 @@ if not s_service_filtered.empty and 'households' in s_service_filtered.columns a
             
             - **Formula**: `HUS Rate = (households - sewer_connections) / households × 100`
             - **Tooltip**: `households - sewer_connections` (absolute number of unconnected households)
-            - **Target**: < 50% indicates good coverage
             - **Source**: s_service
             """)
     else:
@@ -1441,7 +1440,6 @@ if 'avg_suc' in summary_metrics:
     summary_data.append({
         'KPI': 'Sewer Unresolved Complaints Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '< 10%',
         'Status': 'Good' if avg < 10 else 'Moderate' if avg < 20 else 'High'
     })
 
@@ -1450,7 +1448,6 @@ if 'avg_sbk' in summary_metrics:
     summary_data.append({
         'KPI': 'Sewer Blocks per km',
         'Value': f"{avg:.2f}",
-        'Target': '< 2',
         'Status': 'Good' if avg < 2 else 'Moderate' if avg < 5 else 'High'
     })
 
@@ -1459,7 +1456,6 @@ if 'avg_src' in summary_metrics:
     summary_data.append({
         'KPI': 'Sewer Revenue Coverage Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '≥ 100%',
         'Status': 'Good' if avg >= 100 else 'Below Target' if avg >= 80 else 'Low'
     })
 
@@ -1468,7 +1464,6 @@ if 'avg_sss' in summary_metrics:
     summary_data.append({
         'KPI': 'Sanitation Staff per 1000 Connections',
         'Value': f"{avg:.2f}",
-        'Target': 'Optimal varies',
         'Status': 'Monitor'
     })
 
@@ -1477,7 +1472,6 @@ if 'avg_hus' in summary_metrics:
     summary_data.append({
         'KPI': 'Households Unconnected Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '< 50%',
         'Status': 'Good' if avg < 50 else 'Moderate' if avg < 70 else 'High'
     })
 

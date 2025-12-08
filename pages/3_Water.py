@@ -341,7 +341,7 @@ summary_metrics = {}
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 1: Non-Revenue Water (NRW) Rate")
+    st.markdown("###  Non-Revenue Water (NRW) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "Total_billed = Sum of billed for each zone per month across all days, customers, and sources\n\n"
@@ -394,12 +394,9 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
             summary_metrics['avg_nrw'] = avg_nrw
 
             with col1:
-                delta_color = "inverse" if avg_nrw > 20 else "normal"
                 st.metric(
                     "Average NRW Rate (volumetric)",
                     f"{avg_nrw:.1f}%",
-                    delta=f"{'High' if avg_nrw > 20 else 'Good'}",
-                    delta_color=delta_color,
                     help="NRW = (system_input - consumption) / system_input × 100"
                 )
 
@@ -444,12 +441,9 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
         summary_metrics['avg_nrw'] = avg_nrw
         
         with col1:
-            delta_color = "inverse" if avg_nrw > 20 else "normal"
             st.metric(
                 "Average NRW Rate",
                 f"{avg_nrw:.1f}%",
-                delta=f"{'High' if avg_nrw > 20 else 'Good'}",
-                delta_color=delta_color,
                 help=f"NRW Amount = {total_nrw_amount:,.2f}"
             )
         
@@ -539,7 +533,6 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
             
             - **Formula**: `NRW Rate = (billed - paid) / billed × 100`
             - **NRW Amount**: `billed - paid` (shown in tooltip)
-            - **Target**: < 20% indicates good revenue collection
             - **Aggregation**: By country per month
             """)
     # Only attempt volumetric fallback when billing table is missing
@@ -561,12 +554,9 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
                 col1, col2, col3 = st.columns(3)
 
                 with col1:
-                    delta_color = "inverse" if avg_nrw > 20 else "normal"
                     st.metric(
                         "Average NRW Rate (volumetric)",
                         f"{avg_nrw:.1f}%",
-                        delta=f"{'High' if avg_nrw > 20 else 'Good'}",
-                        delta_color=delta_color,
                         help="NRW = (system_input - consumption) / system_input × 100"
                     )
 
@@ -606,7 +596,7 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 2: E.Coli Tests Passed (ETP) Rate")
+    st.markdown("###  E.Coli Tests Passed (ETP) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "E.Coli Tests Passed for each zone per month = (tests_passed_ecoli / test_conducted_ecoli) × 100\n\n"
@@ -661,12 +651,9 @@ if not w_service_filtered.empty and ecoli_passed_col and ecoli_conducted_col:
         summary_metrics['avg_etp'] = avg_etp
         
         with col1:
-            delta_color = "normal" if avg_etp >= 95 else "inverse"
             st.metric(
                 "Average ETP Rate",
                 f"{avg_etp:.1f}%",
-                delta=f"{'Good' if avg_etp >= 95 else 'Low'}",
-                delta_color=delta_color,
                 help=f"tests_passed_ecoli = {total_passed:,.0f}"
             )
         
@@ -753,7 +740,6 @@ if not w_service_filtered.empty and ecoli_passed_col and ecoli_conducted_col:
             
             - **Formula**: `ETP Rate = (tests_passed_ecoli / test_conducted_ecoli) × 100`
             - **Tooltip**: tests_passed_ecoli (shown in metric tooltip)
-            - **Target**: ≥ 95% indicates safe water quality
             - **Aggregation**: By zone per month
             """)
     else:
@@ -768,7 +754,7 @@ else:
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 3: Chlorine Tests Passed (CTP) Rate")
+    st.markdown("###  Chlorine Tests Passed (CTP) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "Chlorine Tests Passed for each zone per month = (tests_passed_chlorine / tests_conducted_chlorine) × 100\n\n"
@@ -817,12 +803,9 @@ if not w_service_filtered.empty and chlorine_passed_col and chlorine_conducted_c
         summary_metrics['avg_ctp'] = avg_ctp
         
         with col1:
-            delta_color = "normal" if avg_ctp >= 95 else "inverse"
             st.metric(
                 "Average CTP Rate",
                 f"{avg_ctp:.1f}%",
-                delta=f"{'Good' if avg_ctp >= 95 else 'Low'}",
-                delta_color=delta_color,
                 help=f"tests_passed_chlorine = {total_passed:,.0f}"
             )
         
@@ -900,7 +883,6 @@ if not w_service_filtered.empty and chlorine_passed_col and chlorine_conducted_c
             
             - **Formula**: `CTP Rate = (tests_passed_chlorine / tests_conducted_chlorine) × 100`
             - **Tooltip**: tests_passed_chlorine (shown in metric tooltip)
-            - **Target**: ≥ 95% indicates proper disinfection
             - **Aggregation**: By zone per month
             """)
     else:
@@ -915,7 +897,7 @@ else:
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 4: Water Access Over Time")
+    st.markdown("###  Water Access Over Time")
 with col_help:
     st.markdown("", help="**Metric:** Water Access (WA) over time (stacked bar chart)\n\n"
         "**Formula:** Direct columns for each zone per year:\n"
@@ -1029,7 +1011,7 @@ else:
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 5: Population Unconnected to Water (PUW) Rate")
+    st.markdown("###  Population Unconnected to Water (PUW) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "PUW Rate for each zone per year = (popn_total - municipal_coverage) / households × 100\n\n"
@@ -1068,12 +1050,9 @@ if not w_access_filtered.empty and 'popn_total' in w_access_filtered.columns and
             summary_metrics['avg_puw'] = avg_puw
             
             with col1:
-                delta_color = "inverse" if avg_puw > 50 else "normal"
                 st.metric(
                     "Average PUW Rate",
                     f"{avg_puw:.1f}%",
-                    delta=f"{'High' if avg_puw > 50 else 'Good'}",
-                    delta_color=delta_color,
                     help=f"popn_total - municipal_coverage = {total_unconnected:,.0f}"
                 )
             
@@ -1138,7 +1117,6 @@ if not w_access_filtered.empty and 'popn_total' in w_access_filtered.columns and
                 
                 - **Formula**: `PUW Rate = (popn_total - municipal_coverage) / households × 100`
                 - **Tooltip**: popn_total - municipal_coverage (shown in metric tooltip)
-                - **Target**: < 50% indicates good coverage
                 - **Aggregation**: By zone per year
                 """)
         else:
@@ -1162,7 +1140,6 @@ if 'avg_nrw' in summary_metrics:
     summary_data.append({
         'KPI': 'Non-Revenue Water Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '< 20%',
         'Status': 'Good' if avg < 20 else 'Moderate' if avg < 30 else 'High'
     })
 
@@ -1171,7 +1148,6 @@ if 'avg_etp' in summary_metrics:
     summary_data.append({
         'KPI': 'E.Coli Tests Passed Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '≥ 95%',
         'Status': 'Good' if avg >= 95 else 'Low' if avg >= 85 else 'Critical'
     })
 
@@ -1180,7 +1156,6 @@ if 'avg_ctp' in summary_metrics:
     summary_data.append({
         'KPI': 'Chlorine Tests Passed Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '≥ 95%',
         'Status': 'Good' if avg >= 95 else 'Low' if avg >= 85 else 'Critical'
     })
 
@@ -1189,7 +1164,6 @@ if 'avg_puw' in summary_metrics:
     summary_data.append({
         'KPI': 'Population Unconnected Rate',
         'Value': f"{avg:.1f}%",
-        'Target': '< 50%',
         'Status': 'Good' if avg < 50 else 'Moderate' if avg < 70 else 'High'
     })
 

@@ -338,7 +338,7 @@ summary_metrics = {}
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 1: Non-Revenue Water (NRW) Rate")
+    st.markdown("###  Non-Revenue Water (NRW) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "Total_billed = Sum of billed for each zone per month across all days, customers, and sources\n\n"
@@ -409,14 +409,11 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
         summary_metrics['avg_nrw'] = avg_nrw
         
         with col1:
-            delta_color = "inverse" if avg_nrw > 25 else "normal"
-            st.metric(
-                "Average NRW Rate",
-                f"{avg_nrw:.1f}%",
-                delta=f"{'High' if avg_nrw > 25 else 'Good'}",
-                delta_color=delta_color,
-                help="NRW = (system_input - consumption) / system_input × 100" if summary_metrics.get('nrw_mode') == 'volumetric' else "NRW Amount = billed - paid"
-            )
+                st.metric(
+                    "Average NRW Rate",
+                    f"{avg_nrw:.1f}%",
+                    help="NRW = (system_input - consumption) / system_input × 100" if summary_metrics.get('nrw_mode') == 'volumetric' else "NRW Amount = billed - paid"
+                )
         
         with col2:
             # Show a single total metric; units depend on mode
@@ -585,7 +582,6 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
             
             - **Formula**: `NRW Rate = ((Billed - Paid) / Billed) × 100`
             - **NRW Amount**: `Billed - Paid` (shown in tooltip)
-            - **Target**: < 25% is considered good
             - **Aggregation**: By zone per month
             """)
 else:
@@ -598,7 +594,7 @@ else:
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 2: Sewer Revenue Coverage (SRC) Rate")
+    st.markdown("###  Sewer Revenue Coverage (SRC) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "SRC Rate for each city per month = (sewer_revenue / opex) × 100\n\n"
@@ -648,12 +644,9 @@ if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.co
             summary_metrics['avg_src'] = avg_src
             
             with col1:
-                delta_color = "normal" if avg_src >= 100 else "inverse"
                 st.metric(
                     "Average SRC Rate",
                     f"{avg_src:.1f}%",
-                    delta=f"{'Sustainable' if avg_src >= 100 else 'Below Cost Recovery'}",
-                    delta_color=delta_color,
                     help="SRC Amount = sewer_revenue"
                 )
             
@@ -745,7 +738,6 @@ if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.co
                 
                 - **Formula**: `SRC Rate = (Sewer Revenue / OpEx) × 100`
                 - **SRC Amount**: `sewer_revenue` (shown in tooltip)
-                - **Target**: ≥ 100% indicates cost recovery
                 - **Aggregation**: By city per month
                 
                 Reference: [MDPI Water Journal](https://www.mdpi.com/2073-4441/10/1/27)
@@ -762,7 +754,7 @@ else:
 st.markdown("---")
 col_title, col_help = st.columns([0.95, 0.05])
 with col_title:
-    st.markdown("### KPI 3: OpEx Share of Budget (OSB) Rate")
+    st.markdown("###  OpEx Share of Budget (OSB) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
         "Total_opex = For all months of every year, sum of opex across each city\n\n"
@@ -794,36 +786,30 @@ if not fin_service_filtered.empty and not national_filtered.empty:
         df_nat['city'] = df_nat.get('country', 'Unknown')
     
     # Check if we have valid year data
-    if df_fin['year'].isna().all() or df_nat['year'].isna().all():
+    if df_fin['year'].isna().all() and df_nat['year'].isna().all():
         st.warning("Year data not available for OSB calculation")
-    # Aggregate opex by city and year
+    # Aggregate opex by city (across years) to show city-level OSB
     elif 'opex' in df_fin.columns:
         # Ensure opex numeric
         df_fin['opex'] = pd.to_numeric(df_fin['opex'], errors='coerce')
-        opex_agg = df_fin.groupby(['city', 'year']).agg({
-            'opex': 'sum'
-        }).reset_index()
-        opex_agg.rename(columns={'opex': 'total_opex'}, inplace=True)
-        
-        # Get budget allocation by city and year
+        # Aggregate opex across all available years by city
+        opex_agg = df_fin.groupby(['city'], as_index=False).agg({'opex': 'sum'}).rename(columns={'opex': 'total_opex'})
+
+        # Get budget allocation by city across years (sum budgets to match opex aggregation)
         if 'budget_allocated' in df_nat.columns:
-            # Ensure budget numeric
             df_nat['budget_allocated'] = pd.to_numeric(df_nat['budget_allocated'], errors='coerce')
-            budget_agg = df_nat.groupby(['city', 'year']).agg({
-                'budget_allocated': 'first'  # Budget is annual
-            }).reset_index()
-            
-            # Merge
-            osb_data = opex_agg.merge(budget_agg, on=['city', 'year'], how='inner')
-            
-            # Calculate OSB Rate: coerce to numeric and keep zeros
+            budget_agg = df_nat.groupby(['city'], as_index=False).agg({'budget_allocated': 'sum'})
+
+            # Merge city-level totals
+            osb_data = opex_agg.merge(budget_agg, on=['city'], how='inner')
+
+            # Calculate OSB Rate at city level
             osb_data['total_opex'] = pd.to_numeric(osb_data['total_opex'], errors='coerce')
             osb_data['budget_allocated'] = pd.to_numeric(osb_data['budget_allocated'], errors='coerce')
             osb_data['osb_rate'] = osb_data.apply(
-                lambda row: safe_div(row['total_opex'], row['budget_allocated']) * 100,
+                lambda row: safe_div(row['total_opex'], row['budget_allocated']) * 100 if row['budget_allocated'] > 0 else float('nan'),
                 axis=1
             )
-            # Keep zero values but drop NaN
             osb_data = osb_data[osb_data['osb_rate'].notna()]
             
             if not osb_data.empty:
@@ -837,12 +823,9 @@ if not fin_service_filtered.empty and not national_filtered.empty:
                 summary_metrics['avg_osb'] = avg_osb
                 
                 with col1:
-                    delta_color = "normal" if avg_osb <= 100 else "inverse"
                     st.metric(
                         "Average OSB Rate",
                         f"{avg_osb:.1f}%",
-                        delta=f"{'Within Budget' if avg_osb <= 100 else 'Over Budget'}",
-                        delta_color=delta_color,
                         help="Total_opex shown in tooltip"
                     )
                 
@@ -861,9 +844,9 @@ if not fin_service_filtered.empty and not national_filtered.empty:
                     )
                 
                 # Horizontal bar chart with gradient color showing budget utilization
-                # Create city-year labels and sort by OSB rate
+                # Create city labels and sort by OSB rate (city-level view)
                 osb_display = osb_data.copy()
-                osb_display['city_year'] = osb_display['city'] + ' (' + osb_display['year'].astype(str) + ')'
+                osb_display['city_label'] = osb_display['city']
                 osb_display = osb_display.sort_values('osb_rate', ascending=True)
                 
                 # Create gradient blue colors based on OSB rate
@@ -882,7 +865,7 @@ if not fin_service_filtered.empty and not national_filtered.empty:
                 fig_osb = go.Figure()
                 
                 fig_osb.add_trace(go.Bar(
-                    y=osb_display['city_year'],
+                    y=osb_display['city_label'],
                     x=osb_display['osb_rate'],
                     orientation='h',
                     marker=dict(
@@ -891,7 +874,7 @@ if not fin_service_filtered.empty and not national_filtered.empty:
                     ),
                     text=osb_display['osb_rate'].apply(lambda x: f'{x:.1f}%'),
                     textposition='outside',
-                    hovertemplate='<b>%{y}</b><br>OSB Rate: %{x:.1f}%<br>Total OpEx: $%{customdata[0]:,.0f}<br>Budget: $%{customdata[1]:,.0f}<extra></extra>',
+                    hovertemplate='<b>%{y}</b><br>OSB Rate: %{x:.1f}%<br>Total OpEx: $%{customdata[0]:,.0f}<br>Total Budget: $%{customdata[1]:,.0f}<extra></extra>',
                     customdata=osb_display[['total_opex', 'budget_allocated']].values
                 ))
                 
@@ -899,7 +882,7 @@ if not fin_service_filtered.empty and not national_filtered.empty:
                 # budget limit line removed
                 
                 fig_osb.update_layout(
-                    title='OpEx Share of Budget by City and Year',
+                    title='OpEx Share of Budget by City',
                     xaxis_title="OSB Rate (%)",
                     yaxis_title="City (Year)",
                     height=max(400, len(osb_display) * 40),
@@ -932,7 +915,6 @@ if not fin_service_filtered.empty and not national_filtered.empty:
                     
                     - **Formula**: `OSB Rate = (Total OpEx / Budget Allocated) × 100`
                     - **Total_opex**: Sum of opex across all months for each city (shown in tooltip)
-                    - **Target**: ≤ 100% means operating within budget
                     - **Aggregation**: By city per year
                     """)
             else:
@@ -959,7 +941,6 @@ if 'avg_nrw' in summary_metrics:
     summary_data.append({
         'KPI': 'Non-Revenue Water Rate',
         'Value': f"{avg_nrw:.1f}%",
-        'Target': '< 25%',
         'Status': 'Good' if avg_nrw < 25 else 'High' if avg_nrw < 40 else 'Critical'
     })
 
@@ -969,7 +950,6 @@ if 'avg_src' in summary_metrics:
     summary_data.append({
         'KPI': 'Sewer Revenue Coverage Rate',
         'Value': f"{avg_src:.1f}%",
-        'Target': '≥ 100%',
         'Status': 'Sustainable' if avg_src >= 100 else 'Below Cost Recovery' if avg_src >= 80 else 'Critical'
     })
 
@@ -979,7 +959,6 @@ if 'avg_osb' in summary_metrics:
     summary_data.append({
         'KPI': 'OpEx Share of Budget Rate',
         'Value': f"{avg_osb:.1f}%",
-        'Target': '≤ 100%',
         'Status': 'Within Budget' if avg_osb <= 100 else 'Over Budget' if avg_osb <= 120 else 'Critical'
     })
 

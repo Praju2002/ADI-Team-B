@@ -244,20 +244,21 @@ def get_clean_countries(df, col='country'):
 
 def get_status_color(value, target, higher_is_better=True):
     """Get status color based on value vs target."""
+    # Return a short status label and a color hex
     if higher_is_better:
         if value >= target:
-            return "", "#27ae60"
+            return "Good", "#27ae60"
         elif value >= target * 0.8:
-            return "", "#f39c12"
+            return "Moderate", "#f39c12"
         else:
-            return "", "#e74c3c"
+            return "Low", "#e74c3c"
     else:
         if value <= target:
-            return "", "#27ae60"
+            return "Good", "#27ae60"
         elif value <= target * 1.2:
-            return "", "#f39c12"
+            return "Moderate", "#f39c12"
         else:
-            return "", "#e74c3c"
+            return "High", "#e74c3c"
 
 
 def make_sparkline(x, y, color="#667eea", height=80):
@@ -363,10 +364,6 @@ with st.spinner('Loading dashboard data...'):
 # ---------------------------#
 st.sidebar.header("Filter Options")
 
-# Add cache clear button
-if st.sidebar.button("Clear Cache & Reload Data"):
-    st.cache_data.clear()
-    st.rerun()
 
 # Get available countries
 all_dfs = [billing_df, all_fin_service_df, w_service_df, w_access_df, s_service_df, s_access_df]
@@ -573,12 +570,9 @@ col1, col2, col3 = st.columns(3)
 with col1:
     if 'nrw_rate' in kpi_results:
         value = kpi_results['nrw_rate']
-        status, color = get_status_color(value, 25, higher_is_better=False)
         st.metric(
             "1. NRW Rate",
             f"{value:.1f}%",
-            delta=f"Target: <25% {status}",
-            delta_color="normal" if value < 25 else "inverse",
             help="**Formula:**\n\n"
                 "Total_billed = Sum of billed for each zone per month across all days, customers, and sources\n\n"
                 "Total_paid = Sum of paid for each zone per month across all days, customers, and sources\n\n"
@@ -593,12 +587,9 @@ with col1:
 with col2:
     if 'src_rate' in kpi_results:
         value = kpi_results['src_rate']
-        status, color = get_status_color(value, 100, higher_is_better=True)
         st.metric(
             "2. SRC Rate",
             f"{value:.1f}%",
-            delta=f"Target: ≥100% {status}",
-            delta_color="normal" if value >= 100 else "inverse",
             help="**Formula:**\n\n"
                 "SRC Rate for each city per month = (sewer_revenue / opex) × 100\n\n"
                 "**Aggregation:** City × Month\n\n"
@@ -611,12 +602,9 @@ with col2:
 with col3:
     if 'osb_rate' in kpi_results:
         value = kpi_results['osb_rate']
-        status, color = get_status_color(value, 100, higher_is_better=False)
         st.metric(
             "3. OSB Rate",
             f"{value:.1f}%",
-            delta=f"Target: ≤100% {status}",
-            delta_color="normal" if value <= 100 else "inverse",
             help="**Formula:**\n\n"
                 "Total_opex = For all months of every year, sum of opex across each city\n\n"
                 "Budget_allocated = As provided for every year from all_national\n\n"
@@ -638,12 +626,9 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
     if 'suc_rate' in kpi_results:
         value = kpi_results['suc_rate']
-        status, color = get_status_color(value, 10, higher_is_better=False)
         st.metric(
             "4. SUC Rate",
             f"{value:.1f}%",
-            delta=f"Target: <10% {status}",
-            delta_color="normal" if value < 10 else "inverse",
             help="**Formula:**\n\n"
                 "UC Rate for each city per month = (complaints - resolved) / complaints × 100\n\n"
                 "**Aggregation:** City × Month\n\n"
@@ -661,12 +646,9 @@ with col1:
 with col2:
     if 'sbk' in kpi_results:
         value = kpi_results['sbk']
-        status, color = get_status_color(value, 2, higher_is_better=False)
         st.metric(
             "5. SBK",
             f"{value:.2f}",
-            delta=f"Target: <2 {status}",
-            delta_color="normal" if value < 2 else "inverse",
             help="**Formula:**\n\n"
                 "SBK for each city per month = blocks / sewer_length\n\n"
                 "**Aggregation:** City × Month\n\n"
@@ -684,12 +666,9 @@ with col2:
 with col3:
     if 'etp_rate' in kpi_results:
         value = kpi_results['etp_rate']
-        status, color = get_status_color(value, 95, higher_is_better=True)
         st.metric(
             "6. ETP Rate",
             f"{value:.1f}%",
-            delta=f"Target: ≥95% {status}",
-            delta_color="normal" if value >= 95 else "inverse",
             help="**Formula:**\n\n"
                 "E.Coli Tests Passed for each zone per month = (tests_passed_ecoli / test_conducted_ecoli) × 100\n\n"
                 "**Aggregation:** Zone × Month\n\n"
@@ -707,12 +686,9 @@ with col3:
 with col4:
     if 'ctp_rate' in kpi_results:
         value = kpi_results['ctp_rate']
-        status, color = get_status_color(value, 95, higher_is_better=True)
         st.metric(
             "7. CTP Rate",
             f"{value:.1f}%",
-            delta=f"Target: ≥95% {status}",
-            delta_color="normal" if value >= 95 else "inverse",
             help="**Formula:**\n\n"
                 "Chlorine Tests Passed for each zone per month = (tests_passed_chlorine / tests_conducted_chlorine) × 100\n\n"
                 "**Aggregation:** Zone × Month\n\n"
@@ -727,17 +703,14 @@ with col4:
                 "**Tooltip:** tests_passed_chlorine\n\n"
                 "**File:** w_service")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     if 'ncw_rate' in kpi_results:
         value = kpi_results['ncw_rate']
-        status, color = get_status_color(value, 30, higher_is_better=False)
         st.metric(
             "10. NCW Rate",
             f"{value:.1f}%",
-            delta=f"Target: <30% {status}",
-            delta_color="normal" if value < 30 else "inverse",
             help="**Formula:**\n\n"
                 "Total_production = Sum of all production across all sources on all days of a month\n\n"
                 "Grand_Total_Consumption = Sum of all total_consumption across all zones in a month\n\n"
@@ -757,12 +730,9 @@ with col1:
 with col2:
     if 'nmw_rate' in kpi_results:
         value = kpi_results['nmw_rate']
-        status, color = get_status_color(value, 20, higher_is_better=False)
         st.metric(
             "11. NMW Rate",
             f"{value:.1f}%",
-            delta=f"Target: <20% {status}",
-            delta_color="normal" if value < 20 else "inverse",
             help="**Formula:**\n\n"
                 "NMW Rate for each zone per month = (total_consumption - metered) × 100 / total_consumption\n\n"
                 "**Aggregation:** Zone × Month\n\n"
@@ -777,40 +747,21 @@ with col2:
                 "**Tooltip:** total_consumption - metered\n\n"
                 "**File:** w_service")
 
-with col3:
-    st.metric("8. WSH Rate", "See Water Page", 
-        help="**Formula:**\n\n"
-            "Sum the following for all Zones of a city per year: popn_total, households, municipal_coverage (w_access)\n\n"
-            "Population per household (PPH) for each city per year = sum(popn_total) / sum(households)\n\n"
-            "Municipal_households_covered (MHC) for each city per year = sum(municipal_coverage) / PPH\n\n"
-            "WSH Rate for each city per month = (w_staff / MHC of that year) × 1000\n\n"
-            "**Aggregation:** City × Month\n\n"
-            "**Tooltip:** w_staff\n\n"
-            "**Files:** w_access and all_fin_service")
-    st.metric("9. SSS Rate", "See Sanitation Page", 
-        help="**Formula:**\n\n"
-            "city_sewer_connections per month = Sum of sewer_connections across all zones of a city\n\n"
-            "SSS Rate for each city per month = (san_staff / city_sewer_connections) × 1000\n\n"
-            "**Aggregation:** City × Month\n\n"
-            "**Tooltip:** san_staff\n\n"
-            "**Files:** s_service and all_fin_service")
+
 
 st.markdown("---")
 
 # Service Coverage Section
 st.markdown("#### Service Coverage & Equity")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     if 'puw_rate' in kpi_results:
         value = kpi_results['puw_rate']
-        status, color = get_status_color(value, 50, higher_is_better=False)
         st.metric(
             "14. PUW Rate",
             f"{value:.1f}%",
-            delta=f"Target: <50% {status}",
-            delta_color="normal" if value < 50 else "inverse",
             help="**Formula:**\n\n"
                 "PUW Rate for each zone per year = (popn_total - municipal_coverage) / households × 100\n\n"
                 "**Aggregation:** Zone × Year\n\n"
@@ -828,12 +779,9 @@ with col1:
 with col2:
     if 'hus_rate' in kpi_results:
         value = kpi_results['hus_rate']
-        status, color = get_status_color(value, 50, higher_is_better=False)
         st.metric(
             "15. HUS Rate",
             f"{value:.1f}%",
-            delta=f"Target: <50% {status}",
-            delta_color="normal" if value < 50 else "inverse",
             help="**Formula:**\n\n"
                 "HUS Rate for each zone per month = (households - sewer_connections) / households × 100\n\n"
                 "**Aggregation:** Zone × Month\n\n"
@@ -848,96 +796,13 @@ with col2:
                 "**Tooltip:** households - sewer_connections (unconnected households)\n\n"
                 "**File:** s_service")
 
-with col3:
-    st.metric("12 & 13. Access Charts", "See Detail Pages", 
-        help="**KPI 12: Water Access (WA) over time** - Stacked bar chart showing safely_managed_pct, basic_pct, limited_pct, unimproved_pct, surface_water_pct by zone per year (File: w_access)\n\n"
-            "**KPI 13: Sanitation Access (SA) over time** - Stacked bar chart showing safely_managed_pct, basic_pct, limited_pct, unimproved_pct, open_def_pct by zone per year (File: s_access)")
+
 
 st.markdown("---")
 
-# KPI Summary Table
-st.markdown("### KPI Summary Table")
 
-summary_data = [
-    {"#": "1", "KPI": "Non-Revenue Water (NRW) Rate", "Formula": "(billed-paid)/billed × 100", "Target": "< 25%", "Value": f"{kpi_results.get('nrw_rate', 'N/A'):.1f}%" if 'nrw_rate' in kpi_results else "N/A", "Category": "Financial"},
-    {"#": "2", "KPI": "Sewer Revenue Coverage (SRC) Rate", "Formula": "sewer_revenue/opex × 100", "Target": "≥ 100%", "Value": f"{kpi_results.get('src_rate', 'N/A'):.1f}%" if 'src_rate' in kpi_results else "N/A", "Category": "Financial"},
-    {"#": "3", "KPI": "OpEx Share of Budget (OSB) Rate", "Formula": "total_opex/budget_allocated × 100", "Target": "≤ 100%", "Value": f"{kpi_results.get('osb_rate', 'N/A'):.1f}%" if 'osb_rate' in kpi_results else "N/A", "Category": "Financial"},
-    {"#": "4", "KPI": "Sewer Unresolved Complaints (SUC) Rate", "Formula": "(complaints-resolved)/complaints × 100", "Target": "< 10%", "Value": f"{kpi_results.get('suc_rate', 'N/A'):.1f}%" if 'suc_rate' in kpi_results else "N/A", "Category": "Operational"},
-    {"#": "5", "KPI": "Sewer Blocks per km (SBK)", "Formula": "blocks/sewer_length", "Target": "< 2", "Value": f"{kpi_results.get('sbk', 'N/A'):.2f}" if 'sbk' in kpi_results else "N/A", "Category": "Operational"},
-    {"#": "6", "KPI": "E.Coli Tests Passed (ETP) Rate", "Formula": "tests_passed_ecoli/test_conducted_ecoli × 100", "Target": "≥ 95%", "Value": f"{kpi_results.get('etp_rate', 'N/A'):.1f}%" if 'etp_rate' in kpi_results else "N/A", "Category": "Operational"},
-    {"#": "7", "KPI": "Chlorine Tests Passed (CTP) Rate", "Formula": "tests_passed_chlorine/tests_conducted_chlorine × 100", "Target": "≥ 95%", "Value": f"{kpi_results.get('ctp_rate', 'N/A'):.1f}%" if 'ctp_rate' in kpi_results else "N/A", "Category": "Operational"},
-    {"#": "8", "KPI": "Water Staffing per Household (WSH) Rate", "Formula": "w_staff/MHC × 100", "Target": "Varies", "Value": "See Detail Page", "Category": "Operational"},
-    {"#": "9", "KPI": "Sanitation Staffing per Connection (SSS) Rate", "Formula": "san_staff/city_sewer_connections × 100", "Target": "Varies", "Value": "See Detail Page", "Category": "Operational"},
-    {"#": "10", "KPI": "Non Consumed Water (NCW) Rate", "Formula": "(production-consumption)/production × 100", "Target": "< 30%", "Value": f"{kpi_results.get('ncw_rate', 'N/A'):.1f}%" if 'ncw_rate' in kpi_results else "N/A", "Category": "Operational"},
-    {"#": "11", "KPI": "Non Metered Water (NMW) Rate", "Formula": "(total_consumption-metered)/total_consumption × 100", "Target": "< 20%", "Value": f"{kpi_results.get('nmw_rate', 'N/A'):.1f}%" if 'nmw_rate' in kpi_results else "N/A", "Category": "Operational"},
-    {"#": "12", "KPI": "Water Access Over Time", "Formula": "Direct columns (stacked bar)", "Target": "Monitor", "Value": "See Water Page", "Category": "Coverage"},
-    {"#": "13", "KPI": "Sanitation Access Over Time", "Formula": "Direct columns (stacked bar)", "Target": "Monitor", "Value": "See Sanitation Page", "Category": "Coverage"},
-    {"#": "14", "KPI": "Population Unconnected to Water (PUW) Rate", "Formula": "(popn_total-municipal_coverage)/households × 100", "Target": "< 50%", "Value": f"{kpi_results.get('puw_rate', 'N/A'):.1f}%" if 'puw_rate' in kpi_results else "N/A", "Category": "Coverage"},
-    {"#": "15", "KPI": "Households Unconnected to Sanitation (HUS) Rate", "Formula": "(households-sewer_connections)/households × 100", "Target": "< 50%", "Value": f"{kpi_results.get('hus_rate', 'N/A'):.1f}%" if 'hus_rate' in kpi_results else "N/A", "Category": "Coverage"},
-]
-
-summary_df = pd.DataFrame(summary_data)
-st.dataframe(summary_df, width='stretch', hide_index=True)
 
 st.markdown("---")
 
-# Navigation Guide
-st.markdown("### Navigation Guide")
 
-col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.markdown("""
-    **Finance Page**
-    - KPI 1: NRW Rate
-    - KPI 2: SRC Rate
-    - KPI 3: OSB Rate
-
-    Detailed charts, trends, and zone/city breakdowns for financial sustainability metrics.
-    """)
-
-with col2:
-    st.markdown("""
-    **Sanitation Page**
-    - KPI 4: SUC Rate
-    - KPI 5: SBK
-    - KPI 9: SSS Rate
-    - KPI 13: Sanitation Access
-    - KPI 15: HUS Rate
-
-    Operational performance and service coverage for sanitation.
-    """)
-
-with col3:
-    st.markdown("""
-    **Water Page**
-    - KPI 6: ETP Rate
-    - KPI 7: CTP Rate
-    - KPI 8: WSH Rate
-    - KPI 10: NCW Rate
-    - KPI 11: NMW Rate
-    - KPI 12: Water Access
-    - KPI 14: PUW Rate
-
-    Water quality, efficiency, and coverage metrics.
-    """)
-
-st.markdown("---")
-
-# Data Source Reference
-with st.expander("📁 Data Sources Reference"):
-    st.markdown("""
-    | File | Granularity | Key Columns |
-    |------|-------------|-------------|
-    | **billing** | Zone, Customer, Day | billed, paid, consumption_m3 |
-    | **all_fin_service** | City, Month | sewer_revenue, opex, complaints, resolved, blocks, sewer_length, san_staff, w_staff |
-    | **all_national** | City, Year | budget_allocated |
-    | **production** | Source, Day | production_m3, service_hours |
-    | **w_service** | Zone, Month | total_consumption, metered, tests_passed_ecoli, test_conducted_ecoli, tests_passed_chlorine, tests_conducted_chlorine |
-    | **w_access** | Zone, Year | safely_managed_pct, basic_pct, limited_pct, unimproved_pct, surface_water_pct, popn_total, households, municipal_coverage |
-    | **s_service** | Zone, Month | households, sewer_connections |
-    | **s_access** | Zone, Year | safely_managed_pct, basic_pct, limited_pct, unimproved_pct, open_def_pct |
-    """)
-
-st.markdown("---")
-st.caption("Water & Sanitation Dashboard | Data Analytics for Infrastructure Development")
