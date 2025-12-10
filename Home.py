@@ -13,6 +13,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from utils.nrw import compute_best_nrw
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -95,6 +96,26 @@ st.markdown("""
         background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
         border-right: 1px solid rgba(167, 139, 250, 0.2);
         
+    }
+             @media (prefers-color-scheme: light) {
+        [data-testid="stSidebar"] { 
+             background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+            border-right: 1px solid rgba(167, 139, 250, 0.3);
+        }
+        
+        [data-testid="stSidebar"] h2, 
+        [data-testid="stSidebar"] h3 { 
+            color: #e0e7ff;
+        }
+        
+        .stSelectbox label, .stRadio label { 
+            color: #cbd5e1;
+        }
+        
+        .stSelectbox > div > div { 
+            background: #1e293b;
+            border: 1px solid #475569;
+        }
     }
     
     [data-testid="stSidebar"] h2, 
@@ -374,6 +395,19 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
     total_billed = billing_filtered['billed'].sum()
     total_paid = billing_filtered['paid'].sum()
     kpi_results['nrw_rate'] = safe_div(total_billed - total_paid, total_billed) * 100
+    kpi_results['nrw_mode'] = 'financial'
+    
+    # If billed amounts are zero or invalid, try volumetric NRW using production + w_service
+    if total_billed == 0 or pd.isna(kpi_results['nrw_rate']):
+        prod_df = load_table('production')
+        ws_df = load_table('w_service')
+        best = compute_best_nrw(billing_filtered, prod_df, ws_df, selected_country)
+        if best.get('mode') == 'volumetric':
+            vol_nat = best['national']
+            # Use volumetric metrics
+            kpi_results['nrw_rate'] = vol_nat['nrw_pct_of_input'].mean()
+            kpi_results['nrw_mode'] = 'volumetric'
+            kpi_results['vol_nat'] = vol_nat  # Store for later use in trend chart
 
 # KPI 2: SRC Rate
 if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.columns and 'opex' in fin_service_filtered.columns:
@@ -481,10 +515,15 @@ col1, col2, col3 = st.columns(3)
 with col1:
     if 'nrw_rate' in kpi_results:
         value = kpi_results['nrw_rate']
+        nrw_mode = kpi_results.get('nrw_mode', 'financial')
+        if nrw_mode == 'volumetric':
+            help_text = "**Formula (Volumetric):**\n\nNRW = (system_input - consumption) / system_input × 100\n\n**Aggregation:** Zone × Month\n\n**Note:** Using volumetric calculation due to unavailable billing data\n\n**Files:** production, w_service"
+        else:
+            help_text = "**Formula:**\n\nTotal_billed = Sum of billed for each zone per month across all days, customers, and sources\n\nTotal_paid = Sum of paid for each zone per month across all days, customers, and sources\n\nNRW Rate = (Total_billed - Total_paid) × 100 / Total_billed\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** NRW Amount = Total_billed - Total_paid\n\n**File:** billing"
         st.metric(
             "1. NRW Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\nTotal_billed = Sum of billed for each zone per month across all days, customers, and sources\n\nTotal_paid = Sum of paid for each zone per month across all days, customers, and sources\n\nNRW Rate = (Total_billed - Total_paid) × 100 / Total_billed\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** NRW Amount = Total_billed - Total_paid\n\n**File:** billing"
+            help=help_text
         )
     else:
         st.metric("1. NRW Rate", "N/A", help="Data not available")
@@ -512,31 +551,54 @@ with col3:
         st.metric("3. OSB Rate", "N/A", help="Data not available")
 
 # Trend visualization for Financial Health
-if 'nrw_rate' in kpi_results and not billing_filtered.empty:
+if 'nrw_rate' in kpi_results:
     st.markdown("##### Trends")
     
-    # Prepare trend data
-    df = billing_filtered.copy()
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    df = df.dropna(subset=['date'])
-    df['month'] = df['date'].dt.to_period('M').astype(str)
-    df['billed'] = pd.to_numeric(df['billed'], errors='coerce').fillna(0)
-    df['paid'] = pd.to_numeric(df['paid'], errors='coerce').fillna(0)
+    nrw_mode = kpi_results.get('nrw_mode', 'financial')
     
-    monthly = df.groupby('month').agg({'billed': 'sum', 'paid': 'sum'}).reset_index()
-    monthly['nrw_rate'] = monthly.apply(lambda r: safe_div(r['billed'] - r['paid'], r['billed']) * 100, axis=1)
-    monthly = monthly.sort_values('month').tail(12)
+    if nrw_mode == 'volumetric' and 'vol_nat' in kpi_results:
+        # Use volumetric data
+        monthly = kpi_results['vol_nat'].copy()
+        if not monthly.empty:
+            monthly = monthly.sort_values('year_month').tail(12)
+    elif not billing_filtered.empty:
+        # Prepare trend data from billing
+        df = billing_filtered.copy()
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df = df.dropna(subset=['date'])
+        df['month'] = df['date'].dt.to_period('M').astype(str)
+        df['billed'] = pd.to_numeric(df['billed'], errors='coerce').fillna(0)
+        df['paid'] = pd.to_numeric(df['paid'], errors='coerce').fillna(0)
+        
+        monthly = df.groupby('month').agg({'billed': 'sum', 'paid': 'sum'}).reset_index()
+        monthly['nrw_rate'] = monthly.apply(lambda r: safe_div(r['billed'] - r['paid'], r['billed']) * 100, axis=1)
+        monthly = monthly.sort_values('month').tail(12)
+    else:
+        monthly = pd.DataFrame()
     
     if not monthly.empty:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=monthly['month'],
-            y=monthly['nrw_rate'],
-            mode='lines+markers',
-            name='NRW Rate',
-            line=dict(color='#667eea', width=3),
-            marker=dict(size=8)
-        ))
+        
+        if nrw_mode == 'volumetric':
+            # Plot volumetric NRW rate
+            fig.add_trace(go.Scatter(
+                x=monthly['year_month'],
+                y=monthly['nrw_pct_of_input'],
+                mode='lines+markers',
+                name='NRW Rate (%)',
+                line=dict(color='#667eea', width=3),
+                marker=dict(size=8)
+            ))
+        else:
+            # Plot financial NRW rate
+            fig.add_trace(go.Scatter(
+                x=monthly['month'],
+                y=monthly['nrw_rate'],
+                mode='lines+markers',
+                name='NRW Rate',
+                line=dict(color='#667eea', width=3),
+                marker=dict(size=8)
+            ))
         
         fig.update_layout(
             height=250,
