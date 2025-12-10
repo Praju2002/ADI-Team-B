@@ -125,7 +125,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 AI Assistant")
+st.title("AI Assistant")
 
 with st.sidebar:
     st.header("Chat Settings")

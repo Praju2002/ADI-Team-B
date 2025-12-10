@@ -39,12 +39,20 @@ def load_data_from_csv():
             # Load each file type
             if (country_path / f'all_fin_service_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'all_fin_service_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 all_fin_service_list.append(df)
             
             if (country_path / f'all_nationalacc_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'all_nationalacc_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 all_national_list.append(df)
             
             if (country_path / f'billing_{country}.csv').exists():
@@ -52,12 +60,20 @@ def load_data_from_csv():
                 try:
                     # Read header first to pick only needed columns and set dtypes
                     header = pd.read_csv(billing_file, nrows=0).columns.tolist()
-                    desired = ['date', 'country', 'billed', 'water_billed', 'sewer_billed']
+                    # Include commonly used billing columns such as `paid`,
+                    # `consumption_m3`, `customer_id`, `zone`, `source` so
+                    # downstream KPI calculations (NRW, metering) have the
+                    # required fields available when present in CSVs.
+                    desired = [
+                        'date', 'country', 'billed', 'paid', 'water_billed',
+                        'sewer_billed', 'consumption_m3', 'customer_id',
+                        'zone', 'source'
+                    ]
                     usecols = [c for c in desired if c in header]
                     dtypes = {}
                     if 'country' in header:
                         dtypes['country'] = 'string'
-                    for col in ['billed', 'water_billed', 'sewer_billed']:
+                    for col in ['billed', 'paid', 'water_billed', 'sewer_billed', 'consumption_m3']:
                         if col in header:
                             dtypes[col] = 'float64'
 
@@ -82,27 +98,47 @@ def load_data_from_csv():
             
             if (country_path / f'production_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'production_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 production_list.append(df)
             
             if (country_path / f's_access_{country}.csv').exists():
                 df = pd.read_csv(country_path / f's_access_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 s_access_list.append(df)
             
             if (country_path / f's_service_{country}.csv').exists():
                 df = pd.read_csv(country_path / f's_service_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 s_service_list.append(df)
             
             if (country_path / f'w_access_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'w_access_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 w_access_list.append(df)
             
             if (country_path / f'w_service_{country}.csv').exists():
                 df = pd.read_csv(country_path / f'w_service_{country}.csv')
-                df['country'] = country.capitalize()
+                # Ensure country column is properly capitalized
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
                 w_service_list.append(df)
         except Exception as e:
             st.warning(f"Error loading data for {country}: {e}")
@@ -130,28 +166,8 @@ def load_table(table_name: str):
     Returns:
         DataFrame for the requested table
     """
-    processed_dir = Path('Raw_Data/processed')
-    
-    # Try parquet first (fastest)
-    parquet_file = processed_dir / f"{table_name}.parquet"
-    if _HAS_PARQUET and parquet_file.exists():
-        try:
-            return pd.read_parquet(parquet_file)
-        except Exception:
-            pass
-    
-    # Try Excel (if Master_Data exists)
-    excel_file = Path('Raw_Data/Master_Data.xlsx')
-    if excel_file.exists():
-        try:
-            df = pd.read_excel(excel_file, sheet_name=table_name)
-            if not df.empty:
-                _normalize_dataframe(df)
-                return df
-        except Exception:
-            pass
-    
-    # Fall back to CSV
+    # Load directly from CSV files which have the correct structure
+    # Skip parquet and Excel as they may have different column names
     return _load_table_from_csv(table_name)
 
 
@@ -174,6 +190,18 @@ def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = pd.to_datetime(df[c], errors='coerce')
         except Exception:
             pass
+
+    # Create a unified `date` column if not already present. Use the first parsed
+    # date-like column found. This ensures downstream code can rely on a
+    # consistent `date` column regardless of source naming (e.g. `date_MMYY`,
+    # `date_YY`, `date`, etc.).
+    if 'date' not in df.columns and date_cols:
+        first_date_col = date_cols[0]
+        try:
+            df['date'] = pd.to_datetime(df[first_date_col], errors='coerce')
+        except Exception:
+            # fallback: create NaT
+            df['date'] = pd.NaT
     
     return df
 
@@ -184,23 +212,85 @@ def _load_table_from_csv(table_name: str) -> pd.DataFrame:
     base_path = Path('Raw_Data')
     df_list = []
     
+    # Map table names to actual file names (some files have different naming)
+    file_name_map = {
+        'all_national': 'all_nationalacc'
+    }
+    actual_file_name = file_name_map.get(table_name, table_name)
+    
     for country in countries:
         country_path = base_path / country
-        file_path = country_path / f"{table_name}_{country}.csv"
+        file_path = country_path / f"{actual_file_name}_{country}.csv"
         
         if not file_path.exists():
             continue
         
         try:
-            df = pd.read_csv(file_path, low_memory=False)
-            df['country'] = country.capitalize()
+            # Special handling for billing table
+            if table_name == 'billing':
+                header = pd.read_csv(file_path, nrows=0).columns.tolist()
+                desired = [
+                    'date', 'country', 'billed', 'paid', 'water_billed',
+                    'sewer_billed', 'consumption_m3', 'customer_id',
+                    'zone', 'source', 'city'
+                ]
+                usecols = [c for c in desired if c in header]
+                dtypes = {}
+                if 'country' in header:
+                    dtypes['country'] = 'string'
+                for col in ['billed', 'paid', 'water_billed', 'sewer_billed', 'consumption_m3']:
+                    if col in header:
+                        dtypes[col] = 'float64'
+                
+                df = pd.read_csv(file_path, usecols=usecols, dtype=dtypes, low_memory=False)
+                # Parse date with DD-MM-YY format for billing
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'], format='%d-%m-%y', errors='coerce')
+            elif table_name in ['all_fin_service', 's_service', 'w_service']:
+                df = pd.read_csv(file_path, low_memory=False)
+                # Parse date with MMM-YY format for all_fin_service, s_service, w_service
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'], format='%b-%y', errors='coerce')
+            elif table_name in ['all_national', 'all_nationalacc']:
+                df = pd.read_csv(file_path, low_memory=False)
+                # Parse date with YYYY format for all_national/all_nationalacc
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'], format='%Y', errors='coerce')
+            elif table_name in ['s_access', 'w_access']:
+                df = pd.read_csv(file_path, low_memory=False)
+                # Parse year column for access tables (they use 'year' not 'date')
+                if 'year' in df.columns:
+                    df['year'] = pd.to_datetime(df['year'], format='%Y', errors='coerce')
+            elif table_name == 'production':
+                df = pd.read_csv(file_path, low_memory=False)
+                # Parse date with YYYY-MM-DD format for production
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d', errors='coerce')
+            else:
+                df = pd.read_csv(file_path, low_memory=False)
+            
+            # Ensure country column is properly capitalized (overwrite CSV value)
+            if 'country' in df.columns:
+                df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+            else:
+                df['country'] = country.capitalize()
             df_list.append(df)
         except Exception:
-            continue
+            # Fallback to full read
+            try:
+                df = pd.read_csv(file_path, low_memory=False)
+                # Ensure country column is properly capitalized (overwrite CSV value)
+                if 'country' in df.columns:
+                    df['country'] = df['country'].astype(str).str.strip().str.capitalize()
+                else:
+                    df['country'] = country.capitalize()
+                df_list.append(df)
+            except Exception:
+                continue
     
     if df_list:
         result = pd.concat(df_list, ignore_index=True)
-        _normalize_dataframe(result)
+        # Don't call _normalize_dataframe since dates are already parsed
         return result
     
     return pd.DataFrame()
