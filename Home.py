@@ -14,6 +14,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from utils.nrw import compute_best_nrw
+from utils.floating_button import add_floating_chatbot_button
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -770,3 +771,6 @@ if 'puw_rate' in kpi_results and 'hus_rate' in kpi_results:
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
+
+# Add floating chatbot button
+add_floating_chatbot_button()

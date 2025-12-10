@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from utils.plot_utils import set_smart_yaxis
 from utils.colors import OKABE_ITO, CB_SEQUENTIAL
+from utils.floating_button import add_floating_chatbot_button
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -1045,3 +1046,6 @@ else:
     st.warning("Household/connection data not available. Required columns: households, sewer_connections")
 
 
+
+# Add floating chatbot button
+add_floating_chatbot_button()

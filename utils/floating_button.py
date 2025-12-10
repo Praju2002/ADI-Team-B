@@ -11,6 +11,12 @@ def add_floating_chatbot_button():
     """
     st.markdown("""
     <style>
+        /* Hide Chatbot from sidebar */
+        [data-testid="stSidebarNav"] li:has(a[href$="Chatbot"]),
+        [data-testid="stSidebarNav"] a[href$="Chatbot"] {
+            display: none;
+        }
+
         /* Floating Chatbot Button */
         .floating-chatbot-btn {
             position: fixed;
@@ -82,10 +88,7 @@ def add_floating_chatbot_button():
         }
     </style>
     
-    <a href="?page=4_Chatbot" class="floating-chatbot-btn pulse" title="Ask Chatbot" onclick="
-        // Navigate to Chatbot page using Streamlit's navigation
-        window.location.href = '?page=Chatbot' || window.location.href.split('?')[0].replace(/\\/[^\\/]*$/, '') + '/Chatbot';
-    ">
+    <a href="Chatbot" target="_self" class="floating-chatbot-btn pulse" title="Ask Chatbot">
         💬
     </a>
     <div class="floating-chatbot-tooltip">Ask Chatbot</div>
@@ -93,4 +96,4 @@ def add_floating_chatbot_button():
     
     # Alternative: Using st.query_params for navigation (Streamlit 1.28+)
     if st.sidebar.button("💬 Ask Chatbot", key="floating_chatbot_sidebar", help="Go to Chatbot"):
-        st.switch_page("pages/.hidden/Chatbot.py")
+        st.switch_page("pages/4_Chatbot.py")

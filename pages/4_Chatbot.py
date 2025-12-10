@@ -11,6 +11,12 @@ st.set_page_config(page_title="Data Chatbot", layout="wide")
 # Modern pastel design
 st.markdown("""
 <style>
+    /* Hide Chatbot from sidebar */
+    [data-testid="stSidebarNav"] li:has(a[href$="Chatbot"]),
+    [data-testid="stSidebarNav"] a[href$="Chatbot"] {
+        display: none;
+    }
+
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
     
     * { 
