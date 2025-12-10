@@ -13,6 +13,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from utils.nrw import compute_best_nrw
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -94,6 +95,27 @@ st.markdown("""
     [data-testid="stSidebar"] { 
         background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
         border-right: 1px solid rgba(167, 139, 250, 0.2);
+        
+    }
+             @media (prefers-color-scheme: light) {
+        [data-testid="stSidebar"] { 
+             background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+            border-right: 1px solid rgba(167, 139, 250, 0.3);
+        }
+        
+        [data-testid="stSidebar"] h2, 
+        [data-testid="stSidebar"] h3 { 
+            color: #e0e7ff;
+        }
+        
+        .stSelectbox label, .stRadio label { 
+            color: #cbd5e1;
+        }
+        
+        .stSelectbox > div > div { 
+            background: #1e293b;
+            border: 1px solid #475569;
+        }
     }
     
     [data-testid="stSidebar"] h2, 
@@ -136,9 +158,19 @@ st.markdown("""
     
     .kpi-card {
         background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-radius: 16px;
+        padding: 1.75rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    
+    .kpi-card-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
         margin-bottom: 1rem;
     }
     
@@ -146,7 +178,6 @@ st.markdown("""
     .kpi-warning { border-left: 4px solid #f39c12; }
     .kpi-critical { border-left: 4px solid #e74c3c; }
     
-    /* Fix tooltip overflow */
     [data-testid="stTooltipIcon"] {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -164,8 +195,6 @@ st.markdown("""
         line-height: 1.5 !important;
     }
     
-    /* Fix Plotly chart tooltip overflow */
-    /* Allow hover layer events so text and box render together correctly */
     .plotly .hoverlayer {
         pointer-events: auto !important;
     }
@@ -178,12 +207,11 @@ st.markdown("""
         pointer-events: auto !important;
     }
     
-    /* Prevent global transition animations from affecting Plotly tooltip positioning */
     .plotly .hoverlayer, .plotly .hoverlayer * {
         transition: none !important;
         -webkit-transition: none !important;
     }
-    /* Ensure chart containers don't overflow */
+    
     [data-testid="stPlotlyChart"] {
         overflow: visible !important;
         position: relative !important;
@@ -193,7 +221,6 @@ st.markdown("""
         overflow: visible !important;
     }
     
-    /* Fix Plotly tooltip positioning */
     .svg-container {
         overflow: visible !important;
     }
@@ -239,12 +266,11 @@ def get_clean_countries(df, col='country'):
             continue
         cleaned.append(s)
     
-        return sorted(set(cleaned)) if cleaned else ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
+    return sorted(set(cleaned)) if cleaned else ['Cameroon', 'Lesotho', 'Malawi', 'Uganda']
 
 
 def get_status_color(value, target, higher_is_better=True):
     """Get status color based on value vs target."""
-    # Return a short status label and a color hex
     if higher_is_better:
         if value >= target:
             return "Good", "#27ae60"
@@ -259,88 +285,6 @@ def get_status_color(value, target, higher_is_better=True):
             return "Moderate", "#f39c12"
         else:
             return "High", "#e74c3c"
-
-
-def make_sparkline(x, y, color="#667eea", height=80):
-    """Return a tiny Plotly sparkline figure for a 1-row display under a KPI."""
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=list(x), y=list(y), mode='lines', line=dict(color=color, width=2), hovertemplate='%{y:.1f}<extra></extra>'))
-    fig.update_layout(
-        margin=dict(l=2, r=2, t=2, b=2),
-        height=height,
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)'
-    )
-    return fig
-
-
-def monthly_nrw_series(billing_df, months=12):
-    """Return (months, nrw_rate_series) for national NRW based on billing (percentage)."""
-    if billing_df is None or billing_df.empty or 'date' not in billing_df.columns:
-        return [], []
-    df = billing_df.copy()
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    if df['date'].isna().all() or 'billed' not in df.columns or 'paid' not in df.columns:
-        return [], []
-    df['year_month'] = df['date'].dt.to_period('M').astype(str)
-    df['billed'] = pd.to_numeric(df['billed'], errors='coerce').fillna(0)
-    df['paid'] = pd.to_numeric(df['paid'], errors='coerce').fillna(0)
-    agg = df.groupby('year_month', as_index=False).agg({'billed': 'sum', 'paid': 'sum'})
-    agg['nrw_rate'] = agg.apply(lambda r: safe_div(r['billed'] - r['paid'], r['billed']) * 100 if r['billed'] > 0 else float('nan'), axis=1)
-    agg = agg.sort_values('year_month').tail(months)
-    return agg['year_month'].tolist(), agg['nrw_rate'].fillna(0).tolist()
-
-
-def monthly_src_series(fin_service_df, months=12):
-    """Return (months, src_rate_series) for national SRC using sewer_revenue/opex aggregated monthly."""
-    if fin_service_df is None or fin_service_df.empty or 'date' not in fin_service_df.columns:
-        return [], []
-    df = fin_service_df.copy()
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    if df['date'].isna().all() or 'sewer_revenue' not in df.columns or 'opex' not in df.columns:
-        return [], []
-    df['year_month'] = df['date'].dt.to_period('M').astype(str)
-    df['sewer_revenue'] = pd.to_numeric(df['sewer_revenue'], errors='coerce').fillna(0)
-    df['opex'] = pd.to_numeric(df['opex'], errors='coerce').fillna(0)
-    agg = df.groupby('year_month', as_index=False).agg({'sewer_revenue': 'sum', 'opex': 'sum'})
-    agg['src_rate'] = agg.apply(lambda r: safe_div(r['sewer_revenue'], r['opex']) * 100 if r['opex'] > 0 else float('nan'), axis=1)
-    agg = agg.sort_values('year_month').tail(months)
-    return agg['year_month'].tolist(), agg['src_rate'].fillna(0).tolist()
-
-
-def yearly_osb_series(fin_service_df, national_df):
-    """Return (years, osb_rate_series) per year using total opex and national budget per year."""
-    if (fin_service_df is None or fin_service_df.empty) or (national_df is None or national_df.empty):
-        return [], []
-    df_fin = fin_service_df.copy()
-    if 'date' in df_fin.columns:
-        df_fin['date'] = pd.to_datetime(df_fin['date'], errors='coerce')
-        df_fin['year'] = df_fin['date'].dt.year
-    else:
-        df_fin['year'] = None
-    if 'opex' not in df_fin.columns:
-        return [], []
-    df_fin['opex'] = pd.to_numeric(df_fin['opex'], errors='coerce').fillna(0)
-    opex_agg = df_fin.groupby('year', as_index=False)['opex'].sum()
-
-    df_nat = national_df.copy()
-    if 'date' in df_nat.columns:
-        df_nat['date'] = pd.to_datetime(df_nat['date'], errors='coerce')
-        df_nat['year'] = df_nat['date'].dt.year
-    else:
-        df_nat['year'] = df_nat.get('year')
-    if 'budget_allocated' not in df_nat.columns:
-        return [], []
-    df_nat['budget_allocated'] = pd.to_numeric(df_nat['budget_allocated'], errors='coerce').fillna(0)
-    budget_agg = df_nat.groupby('year', as_index=False)['budget_allocated'].sum()
-
-    merged = opex_agg.merge(budget_agg, on='year', how='inner').sort_values('year')
-    if merged.empty:
-        return [], []
-    merged['osb_rate'] = merged.apply(lambda r: safe_div(r['opex'], r['budget_allocated']) * 100 if r['budget_allocated'] > 0 else float('nan'), axis=1)
-    return merged['year'].astype(str).tolist(), merged['osb_rate'].fillna(0).tolist()
 
 
 # ---------------------------#
@@ -364,8 +308,6 @@ with st.spinner('Loading dashboard data...'):
 # ---------------------------#
 st.sidebar.header("Filter Options")
 
-
-# Get available countries
 all_dfs = [billing_df, all_fin_service_df, w_service_df, w_access_df, s_service_df, s_access_df]
 available_countries = []
 for df in all_dfs:
@@ -413,7 +355,6 @@ if date_min and date_max:
 else:
     date_range = None
 
-
 # ---------------------------#
 # Apply Filters
 # ---------------------------#
@@ -435,18 +376,14 @@ def apply_filters(df, country, date_range, date_col='date'):
     
     return df
 
-
-# Apply filters to all dataframes
 billing_filtered = apply_filters(billing_df, selected_country, date_range)
 fin_service_filtered = apply_filters(all_fin_service_df, selected_country, date_range)
-# National data has yearly dates - don't filter by monthly date range to avoid losing data
-national_filtered = apply_filters(all_national_df, selected_country, None)  # Only filter by country
+national_filtered = apply_filters(all_national_df, selected_country, None)
 w_service_filtered = apply_filters(w_service_df, selected_country, date_range)
 w_access_filtered = apply_filters(w_access_df, selected_country, None, date_col='year')
 s_service_filtered = apply_filters(s_service_df, selected_country, date_range)
 s_access_filtered = apply_filters(s_access_df, selected_country, None, date_col='year')
 production_filtered = apply_filters(production_df, selected_country, date_range)
-
 
 # ---------------------------#
 # Calculate All KPIs
@@ -458,6 +395,19 @@ if not billing_filtered.empty and 'billed' in billing_filtered.columns and 'paid
     total_billed = billing_filtered['billed'].sum()
     total_paid = billing_filtered['paid'].sum()
     kpi_results['nrw_rate'] = safe_div(total_billed - total_paid, total_billed) * 100
+    kpi_results['nrw_mode'] = 'financial'
+    
+    # If billed amounts are zero or invalid, try volumetric NRW using production + w_service
+    if total_billed == 0 or pd.isna(kpi_results['nrw_rate']):
+        prod_df = load_table('production')
+        ws_df = load_table('w_service')
+        best = compute_best_nrw(billing_filtered, prod_df, ws_df, selected_country)
+        if best.get('mode') == 'volumetric':
+            vol_nat = best['national']
+            # Use volumetric metrics
+            kpi_results['nrw_rate'] = vol_nat['nrw_pct_of_input'].mean()
+            kpi_results['nrw_mode'] = 'volumetric'
+            kpi_results['vol_nat'] = vol_nat  # Store for later use in trend chart
 
 # KPI 2: SRC Rate
 if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.columns and 'opex' in fin_service_filtered.columns:
@@ -465,10 +415,9 @@ if not fin_service_filtered.empty and 'sewer_revenue' in fin_service_filtered.co
     total_opex = fin_service_filtered['opex'].sum()
     kpi_results['src_rate'] = safe_div(total_sewer_revenue, total_opex) * 100
 
-# KPI 3: OSB Rate (requires annual data)
+# KPI 3: OSB Rate
 if not fin_service_filtered.empty and not national_filtered.empty:
     if 'opex' in fin_service_filtered.columns and 'budget_allocated' in national_filtered.columns:
-        # Ensure numeric types
         fin_opex = pd.to_numeric(fin_service_filtered['opex'], errors='coerce')
         nat_budget = pd.to_numeric(national_filtered['budget_allocated'], errors='coerce')
         
@@ -553,33 +502,28 @@ if not s_service_filtered.empty and 'households' in s_service_filtered.columns a
     if total_hh > 0:
         kpi_results['hus_rate'] = safe_div(total_hh - total_conn, total_hh) * 100
 
-
 # ---------------------------#
 # Display Dashboard
 # ---------------------------#
 st.markdown("---")
 
-# Overview metrics row
-st.markdown("### Key Performance Indicators Overview")
-
-# Financial Health Section
-st.markdown("#### Financial Health & Sustainability")
+# Financial Health Section - Card Style
+st.markdown('<div class="kpi-card"><div class="kpi-card-title">Financial Health & Sustainability</div></div>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     if 'nrw_rate' in kpi_results:
         value = kpi_results['nrw_rate']
+        nrw_mode = kpi_results.get('nrw_mode', 'financial')
+        if nrw_mode == 'volumetric':
+            help_text = "**Formula (Volumetric):**\n\nNRW = (system_input - consumption) / system_input × 100\n\n**Aggregation:** Zone × Month\n\n**Note:** Using volumetric calculation due to unavailable billing data\n\n**Files:** production, w_service"
+        else:
+            help_text = "**Formula:**\n\nTotal_billed = Sum of billed for each zone per month across all days, customers, and sources\n\nTotal_paid = Sum of paid for each zone per month across all days, customers, and sources\n\nNRW Rate = (Total_billed - Total_paid) × 100 / Total_billed\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** NRW Amount = Total_billed - Total_paid\n\n**File:** billing"
         st.metric(
             "1. NRW Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "Total_billed = Sum of billed for each zone per month across all days, customers, and sources\n\n"
-                "Total_paid = Sum of paid for each zone per month across all days, customers, and sources\n\n"
-                "NRW Rate = (Total_billed - Total_paid) × 100 / Total_billed\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** NRW Amount = Total_billed - Total_paid\n\n"
-                "**File:** billing"
+            help=help_text
         )
     else:
         st.metric("1. NRW Rate", "N/A", help="Data not available")
@@ -590,11 +534,7 @@ with col2:
         st.metric(
             "2. SRC Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "SRC Rate for each city per month = (sewer_revenue / opex) × 100\n\n"
-                "**Aggregation:** City × Month\n\n"
-                "**Tooltip:** SRC Amount = sewer_revenue\n\n"
-                "**File:** all_fin_service"
+            help="**Formula:**\n\nSRC Rate for each city per month = (sewer_revenue / opex) × 100\n\n**Aggregation:** City × Month\n\n**Tooltip:** SRC Amount = sewer_revenue\n\n**File:** all_fin_service"
         )
     else:
         st.metric("2. SRC Rate", "N/A", help="Data not available")
@@ -605,21 +545,78 @@ with col3:
         st.metric(
             "3. OSB Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "Total_opex = For all months of every year, sum of opex across each city\n\n"
-                "Budget_allocated = As provided for every year from all_national\n\n"
-                "OSB Rate for each city per year = (Total_opex / Budget_allocated) × 100\n\n"
-                "**Aggregation:** City × Year\n\n"
-                "**Tooltip:** Total_opex\n\n"
-                "**Files:** all_fin_service and all_national"
+            help="**Formula:**\n\nTotal_opex = For all months of every year, sum of opex across each city\n\nBudget_allocated = As provided for every year from all_national\n\nOSB Rate for each city per year = (Total_opex / Budget_allocated) × 100\n\n**Aggregation:** City × Year\n\n**Tooltip:** Total_opex\n\n**Files:** all_fin_service and all_national"
         )
     else:
         st.metric("3. OSB Rate", "N/A", help="Data not available")
 
+# Trend visualization for Financial Health
+if 'nrw_rate' in kpi_results:
+    st.markdown("##### Trends")
+    
+    nrw_mode = kpi_results.get('nrw_mode', 'financial')
+    
+    if nrw_mode == 'volumetric' and 'vol_nat' in kpi_results:
+        # Use volumetric data
+        monthly = kpi_results['vol_nat'].copy()
+        if not monthly.empty:
+            monthly = monthly.sort_values('year_month').tail(12)
+    elif not billing_filtered.empty:
+        # Prepare trend data from billing
+        df = billing_filtered.copy()
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df = df.dropna(subset=['date'])
+        df['month'] = df['date'].dt.to_period('M').astype(str)
+        df['billed'] = pd.to_numeric(df['billed'], errors='coerce').fillna(0)
+        df['paid'] = pd.to_numeric(df['paid'], errors='coerce').fillna(0)
+        
+        monthly = df.groupby('month').agg({'billed': 'sum', 'paid': 'sum'}).reset_index()
+        monthly['nrw_rate'] = monthly.apply(lambda r: safe_div(r['billed'] - r['paid'], r['billed']) * 100, axis=1)
+        monthly = monthly.sort_values('month').tail(12)
+    else:
+        monthly = pd.DataFrame()
+    
+    if not monthly.empty:
+        fig = go.Figure()
+        
+        if nrw_mode == 'volumetric':
+            # Plot volumetric NRW rate
+            fig.add_trace(go.Scatter(
+                x=monthly['year_month'],
+                y=monthly['nrw_pct_of_input'],
+                mode='lines+markers',
+                name='NRW Rate (%)',
+                line=dict(color='#667eea', width=3),
+                marker=dict(size=8)
+            ))
+        else:
+            # Plot financial NRW rate
+            fig.add_trace(go.Scatter(
+                x=monthly['month'],
+                y=monthly['nrw_rate'],
+                mode='lines+markers',
+                name='NRW Rate',
+                line=dict(color='#667eea', width=3),
+                marker=dict(size=8)
+            ))
+        
+        fig.update_layout(
+            height=250,
+            margin=dict(l=20, r=20, t=20, b=20),
+            xaxis_title='',
+            yaxis_title='NRW Rate (%)',
+            showlegend=False,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor='rgba(0,0,0,0.05)')
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
 st.markdown("---")
 
-# Operational Performance Section
-st.markdown("#### Operational Performance")
+# Operational Performance Section - Card Style
+st.markdown('<div class="kpi-card"><div class="kpi-card-title">Operational Performance</div></div>', unsafe_allow_html=True)
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -629,19 +626,10 @@ with col1:
         st.metric(
             "4. SUC Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "UC Rate for each city per month = (complaints - resolved) / complaints × 100\n\n"
-                "**Aggregation:** City × Month\n\n"
-                "**Tooltip:** UC = complaints - resolved\n\n"
-                "**File:** all_fin_service"
+            help="**Formula:**\n\nUC Rate for each city per month = (complaints - resolved) / complaints × 100\n\n**Aggregation:** City × Month\n\n**Tooltip:** UC = complaints - resolved\n\n**File:** all_fin_service"
         )
     else:
-        st.metric("4. SUC Rate", "N/A", 
-            help="**Formula:**\n\n"
-                "UC Rate for each city per month = (complaints - resolved) / complaints × 100\n\n"
-                "**Aggregation:** City × Month\n\n"
-                "**Tooltip:** UC = complaints - resolved\n\n"
-                "**File:** all_fin_service")
+        st.metric("4. SUC Rate", "N/A", help="Data not available")
 
 with col2:
     if 'sbk' in kpi_results:
@@ -649,19 +637,10 @@ with col2:
         st.metric(
             "5. SBK",
             f"{value:.2f}",
-            help="**Formula:**\n\n"
-                "SBK for each city per month = blocks / sewer_length\n\n"
-                "**Aggregation:** City × Month\n\n"
-                "**Tooltip:** Sewer Blocks = blocks\n\n"
-                "**File:** all_fin_service"
+            help="**Formula:**\n\nSBK for each city per month = blocks / sewer_length\n\n**Aggregation:** City × Month\n\n**Tooltip:** Sewer Blocks = blocks\n\n**File:** all_fin_service"
         )
     else:
-        st.metric("5. SBK", "N/A",
-            help="**Formula:**\n\n"
-                "SBK for each city per month = blocks / sewer_length\n\n"
-                "**Aggregation:** City × Month\n\n"
-                "**Tooltip:** Sewer Blocks = blocks\n\n"
-                "**File:** all_fin_service")
+        st.metric("5. SBK", "N/A", help="Data not available")
 
 with col3:
     if 'etp_rate' in kpi_results:
@@ -669,19 +648,10 @@ with col3:
         st.metric(
             "6. ETP Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "E.Coli Tests Passed for each zone per month = (tests_passed_ecoli / test_conducted_ecoli) × 100\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** tests_passed_ecoli\n\n"
-                "**File:** w_service"
+            help="**Formula:**\n\nE.Coli Tests Passed for each zone per month = (tests_passed_ecoli / test_conducted_ecoli) × 100\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** tests_passed_ecoli\n\n**File:** w_service"
         )
     else:
-        st.metric("6. ETP Rate", "N/A",
-            help="**Formula:**\n\n"
-                "E.Coli Tests Passed for each zone per month = (tests_passed_ecoli / test_conducted_ecoli) × 100\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** tests_passed_ecoli\n\n"
-                "**File:** w_service")
+        st.metric("6. ETP Rate", "N/A", help="Data not available")
 
 with col4:
     if 'ctp_rate' in kpi_results:
@@ -689,19 +659,10 @@ with col4:
         st.metric(
             "7. CTP Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "Chlorine Tests Passed for each zone per month = (tests_passed_chlorine / tests_conducted_chlorine) × 100\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** tests_passed_chlorine\n\n"
-                "**File:** w_service"
+            help="**Formula:**\n\nChlorine Tests Passed for each zone per month = (tests_passed_chlorine / tests_conducted_chlorine) × 100\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** tests_passed_chlorine\n\n**File:** w_service"
         )
     else:
-        st.metric("7. CTP Rate", "N/A",
-            help="**Formula:**\n\n"
-                "Chlorine Tests Passed for each zone per month = (tests_passed_chlorine / tests_conducted_chlorine) × 100\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** tests_passed_chlorine\n\n"
-                "**File:** w_service")
+        st.metric("7. CTP Rate", "N/A", help="Data not available")
 
 col1, col2 = st.columns(2)
 
@@ -711,21 +672,10 @@ with col1:
         st.metric(
             "10. NCW Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "Total_production = Sum of all production across all sources on all days of a month\n\n"
-                "Grand_Total_Consumption = Sum of all total_consumption across all zones in a month\n\n"
-                "NCW Rate of each country per month = (Total_production - Grand_Total_Consumption) × 100 / Total_production\n\n"
-                "**Tooltip:** Total_production - Grand_Total_Consumption\n\n"
-                "**Files:** production and w_service"
+            help="**Formula:**\n\nTotal_production = Sum of all production across all sources on all days of a month\n\nGrand_Total_Consumption = Sum of all total_consumption across all zones in a month\n\nNCW Rate of each country per month = (Total_production - Grand_Total_Consumption) × 100 / Total_production\n\n**Tooltip:** Total_production - Grand_Total_Consumption\n\n**Files:** production and w_service"
         )
     else:
-        st.metric("10. NCW Rate", "N/A",
-            help="**Formula:**\n\n"
-                "Total_production = Sum of all production across all sources on all days of a month\n\n"
-                "Grand_Total_Consumption = Sum of all total_consumption across all zones in a month\n\n"
-                "NCW Rate of each country per month = (Total_production - Grand_Total_Consumption) × 100 / Total_production\n\n"
-                "**Tooltip:** Total_production - Grand_Total_Consumption\n\n"
-                "**Files:** production and w_service")
+        st.metric("10. NCW Rate", "N/A", help="Data not available")
 
 with col2:
     if 'nmw_rate' in kpi_results:
@@ -733,26 +683,41 @@ with col2:
         st.metric(
             "11. NMW Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "NMW Rate for each zone per month = (total_consumption - metered) × 100 / total_consumption\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** total_consumption - metered\n\n"
-                "**File:** w_service"
+            help="**Formula:**\n\nNMW Rate for each zone per month = (total_consumption - metered) × 100 / total_consumption\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** total_consumption - metered\n\n**File:** w_service"
         )
     else:
-        st.metric("11. NMW Rate", "N/A",
-            help="**Formula:**\n\n"
-                "NMW Rate for each zone per month = (total_consumption - metered) × 100 / total_consumption\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** total_consumption - metered\n\n"
-                "**File:** w_service")
+        st.metric("11. NMW Rate", "N/A", help="Data not available")
 
-
+# Comparison chart for water quality tests
+if 'etp_rate' in kpi_results and 'ctp_rate' in kpi_results:
+    st.markdown("##### Water Quality Test Performance")
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=['E.Coli Tests', 'Chlorine Tests'],
+        y=[kpi_results.get('etp_rate', 0), kpi_results.get('ctp_rate', 0)],
+        marker_color=['#667eea', '#764ba2'],
+        text=[f"{kpi_results.get('etp_rate', 0):.1f}%", f"{kpi_results.get('ctp_rate', 0):.1f}%"],
+        textposition='outside'
+    ))
+    
+    fig.update_layout(
+        height=250,
+        margin=dict(l=20, r=20, t=20, b=20),
+        xaxis_title='',
+        yaxis_title='Pass Rate (%)',
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor='rgba(0,0,0,0.05)', range=[0, 100])
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
-# Service Coverage Section
-st.markdown("#### Service Coverage & Equity")
+# Service Coverage Section - Card Style
+st.markdown('<div class="kpi-card"><div class="kpi-card-title">Service Coverage & Equity</div></div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
@@ -762,19 +727,10 @@ with col1:
         st.metric(
             "14. PUW Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "PUW Rate for each zone per year = (popn_total - municipal_coverage) / households × 100\n\n"
-                "**Aggregation:** Zone × Year\n\n"
-                "**Tooltip:** popn_total - municipal_coverage (unconnected population)\n\n"
-                "**File:** w_access"
+            help="**Formula:**\n\nPUW Rate for each zone per year = (popn_total - municipal_coverage) / households × 100\n\n**Aggregation:** Zone × Year\n\n**Tooltip:** popn_total - municipal_coverage (unconnected population)\n\n**File:** w_access"
         )
     else:
-        st.metric("14. PUW Rate", "N/A",
-            help="**Formula:**\n\n"
-                "PUW Rate for each zone per year = (popn_total - municipal_coverage) / households × 100\n\n"
-                "**Aggregation:** Zone × Year\n\n"
-                "**Tooltip:** popn_total - municipal_coverage (unconnected population)\n\n"
-                "**File:** w_access")
+        st.metric("14. PUW Rate", "N/A", help="Data not available")
 
 with col2:
     if 'hus_rate' in kpi_results:
@@ -782,27 +738,35 @@ with col2:
         st.metric(
             "15. HUS Rate",
             f"{value:.1f}%",
-            help="**Formula:**\n\n"
-                "HUS Rate for each zone per month = (households - sewer_connections) / households × 100\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** households - sewer_connections (unconnected households)\n\n"
-                "**File:** s_service"
+            help="**Formula:**\n\nHUS Rate for each zone per month = (households - sewer_connections) / households × 100\n\n**Aggregation:** Zone × Month\n\n**Tooltip:** households - sewer_connections (unconnected households)\n\n**File:** s_service"
         )
     else:
-        st.metric("15. HUS Rate", "N/A",
-            help="**Formula:**\n\n"
-                "HUS Rate for each zone per month = (households - sewer_connections) / households × 100\n\n"
-                "**Aggregation:** Zone × Month\n\n"
-                "**Tooltip:** households - sewer_connections (unconnected households)\n\n"
-                "**File:** s_service")
+        st.metric("15. HUS Rate", "N/A", help="Data not available")
 
-
+# Coverage comparison chart
+if 'puw_rate' in kpi_results and 'hus_rate' in kpi_results:
+    st.markdown("##### Service Coverage Gaps")
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=['Water Access Gap', 'Sanitation Access Gap'],
+        y=[kpi_results.get('puw_rate', 0), kpi_results.get('hus_rate', 0)],
+        marker_color=['#667eea', '#764ba2'],
+        text=[f"{kpi_results.get('puw_rate', 0):.1f}%", f"{kpi_results.get('hus_rate', 0):.1f}%"],
+        textposition='outside'
+    ))
+    
+    fig.update_layout(
+        height=250,
+        margin=dict(l=20, r=20, t=20, b=20),
+        xaxis_title='',
+        yaxis_title='Gap Rate (%)',
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor='rgba(0,0,0,0.05)')
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
-
-
-
-st.markdown("---")
-
-
-
