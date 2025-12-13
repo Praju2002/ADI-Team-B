@@ -760,12 +760,12 @@ with col_title:
     st.markdown("###  Population Unconnected to Water (PUW) Rate")
 with col_help:
     st.markdown("", help="**Formula:**\n\n"
-        "PUW Rate for each zone per year = (popn_total - municipal_coverage) / households × 100\n\n"
+        "PUW Rate for each zone per year = (popn_total - municipal_coverage) / popn_total × 100\n\n"
         "**Aggregation:** Zone × Year\n\n"
         "**Tooltip:** popn_total - municipal_coverage (unconnected population)\n\n"
         "**File:** w_access")
 
-if not w_access_filtered.empty and 'popn_total' in w_access_filtered.columns and 'municipal_coverage' in w_access_filtered.columns and 'households' in w_access_filtered.columns:
+if not w_access_filtered.empty and 'popn_total' in w_access_filtered.columns and 'municipal_coverage' in w_access_filtered.columns and 'popn_total' in w_access_filtered.columns:
     df_puw = w_access_filtered.copy()
     
     year_col = 'year' if 'year' in df_puw.columns else 'date_YY' if 'date_YY' in df_puw.columns else None
@@ -775,16 +775,16 @@ if not w_access_filtered.empty and 'popn_total' in w_access_filtered.columns and
         puw_agg = df_puw.groupby([zone_col, year_col]).agg({
             'popn_total': 'sum',
             'municipal_coverage': 'sum',
-            'households': 'sum'
+            'popn_total': 'sum'
         }).reset_index()
         
         puw_agg['unconnected_pop'] = puw_agg['popn_total'] - puw_agg['municipal_coverage']
         puw_agg['puw_rate'] = puw_agg.apply(
-            lambda row: safe_div(row['unconnected_pop'], row['households']) * 100,
+            lambda row: safe_div(row['unconnected_pop'], row['popn_total']) * 100,
             axis=1
         )
         
-        puw_agg = puw_agg[puw_agg['households'].notna()]
+        puw_agg = puw_agg[puw_agg['popn_total'].notna()]
         
         if not puw_agg.empty:
             col1, col2, col3 = st.columns(3)
@@ -861,7 +861,7 @@ if not w_access_filtered.empty and 'popn_total' in w_access_filtered.columns and
                 st.markdown("""
                 **Population Unconnected to Water (PUW) Rate** measures water access gap.
                 
-                - **Formula**: `PUW Rate = (popn_total - municipal_coverage) / households × 100`
+                - **Formula**: `PUW Rate = (popn_total - municipal_coverage) / popn_total × 100`
                 - **Tooltip**: popn_total - municipal_coverage (shown in metric tooltip)
                 - **Aggregation**: By zone per year
                 """)
