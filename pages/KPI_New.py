@@ -138,14 +138,14 @@ def add_city_column_if_missing(df, city_zone_mapping_df):
 # --- Chart Function ---
 # def plotly_chart_with_labels(df, x_col, y_col, chart_label, flag=0):
 #     st.subheader(chart_label)
-#     # Average y-axis by x-axis
+#     # Avg. y-axis by x-axis
 #     df_avg = df.groupby(x_col, as_index=False)[y_col].mean().round(0)
 #     # Plot chart (line + markers + text labels)
 #     fig = px.line(
 #         df_avg,
 #         x=x_col,
 #         y=y_col,
-#         title=f"Average {y_col} by {x_col}",
+#         title=f"Avg. {y_col} by {x_col}",
 #         markers=True
 #     )
 #     # Add text labels for each point
@@ -158,7 +158,7 @@ def add_city_column_if_missing(df, city_zone_mapping_df):
 #     fig.update_layout(
 #         title_x=0.5,
 #         xaxis_title=x_col,
-#         yaxis_title=f"Average {y_col}",
+#         yaxis_title=f"Avg. {y_col}",
 #         template="plotly_white"
 #     )
 #     st.plotly_chart(fig, use_container_width=True)
@@ -345,7 +345,7 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, tooltip_cols=None):
         df_plot = df.copy()
         df_plot["Year"] = df_plot[x_col].dt.year
 
-        df_plot = df_plot.groupby("Year")[y_col].mean().reset_index().round(0)
+        df_plot = df_plot.groupby("Year")[y_col].mean().reset_index().round(1)
 
         # ---- FORCE categorical axis ----
         df_plot["Year"] = df_plot["Year"].astype(str)
@@ -358,7 +358,7 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, tooltip_cols=None):
         df_plot = df[df[x_col].dt.year == ss[year_key]].copy()
 
         df_plot["MonthNum"] = df_plot[x_col].dt.month
-        df_plot = df_plot.groupby("MonthNum")[y_col].mean().reset_index().round(0)
+        df_plot = df_plot.groupby("MonthNum")[y_col].mean().reset_index().round(1)
 
         df_plot["Month"] = df_plot["MonthNum"].apply(lambda m: calendar.month_abbr[m])
         df_plot["Month"] = df_plot["Month"].astype(str)
@@ -376,7 +376,7 @@ def plotly_chart_with_labels(df, x_col, y_col, chart_label, tooltip_cols=None):
         ].copy()
 
         df_plot["Day"] = df_plot[x_col].dt.day
-        df_plot = df_plot.groupby("Day")[y_col].mean().reset_index().round(0)
+        df_plot = df_plot.groupby("Day")[y_col].mean().reset_index().round(1)
 
         df_plot["Day"] = df_plot["Day"].astype(str)
         xfield = "Day"
@@ -494,22 +494,24 @@ def metric_card(df, col_name, label=None):
     # Compute average (ignores NaN automatically)
     avg_value = df[col_name].mean()
 
-    # Round to 0 decimals
-    avg_value = round(avg_value)
+    # Round to 1 decimals
+    avg_value = round(avg_value, 1)
 
     # Show metric card
     st.metric(label=label, value=f"{avg_value}")
 
 
-all_fin_service_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='all_fin_service'), 'date_MMYY')
-all_national_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='all_national'), 'date_YY')
-billing_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='agg_billing'), 'date_YYMM')
-production_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='production'), 'date_YYMMDD')
-s_access_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='s_access'), 'date_YY')
-s_service_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='s_service'), 'date_MMYY')
-w_access_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='w_access'), 'date_YY')
-w_service_df = clean_date(pd.read_excel('Master_Data.xlsx', sheet_name='w_service'), 'date_MMYY')
-city_zone_mapping_df = pd.read_excel('Master_Data.xlsx', sheet_name='city_zone_mapping')
+
+
+all_fin_service_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='all_fin_service'), 'date_MMYY')
+all_national_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='all_national'), 'date_YY')
+billing_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='agg_billing'), 'date_YYMM')
+production_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='production'), 'date_YYMMDD')
+s_access_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='s_access'), 'date_YY')
+s_service_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='s_service'), 'date_MMYY')
+w_access_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='w_access'), 'date_YY')
+w_service_df = clean_date(pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='w_service'), 'date_MMYY')
+city_zone_mapping_df = pd.read_excel('Raw_Data\Master_Data.xlsx', sheet_name='city_zone_mapping')
 master_list_df = [all_fin_service_df, all_national_df, billing_df,
                   production_df, s_access_df, s_service_df,
                   w_access_df, w_service_df, city_zone_mapping_df]
@@ -707,17 +709,17 @@ with tab1:
     with col1:
         df = kpi1_billing_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "NRW Rate", label="Average NRW (%)")
+        metric_card(df_filtered, "NRW Rate", label="Avg. NRW %")
 
     with col2:
         df = kpi2a4a5_all_fin_service_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "SRC Rate", label="Average SRC (%)")
+        metric_card(df_filtered, "SRC Rate", label="Avg. SRC %")
         
     with col3:
         df = kpi3_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "OSB Rate", label="Average OSB (%)")
+        metric_card(df_filtered, "OSB Rate", label="Avg. OSB %")
 
 
     df = kpi1_billing_df
@@ -738,42 +740,60 @@ with tab1:
 
 with tab2:
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         df = kpi2a4a5_all_fin_service_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "SUC Rate", label="Average SUC (%)")
-
-
-    with col2:
-        df = kpi2a4a5_all_fin_service_df
-        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "SBK Rate", label="Average SBK")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        df = kpi8_df
-        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "WSH Rate", label="Average WSH (%)")
+        metric_card(df_filtered, "SUC Rate", label="Avg. SUC %")
 
     with col2:
-        df = kpi9_df
-        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "SSC Rate", label="Average SSC (%)")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
         df = kpi10_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "NCW Rate", label="Average NCW (%)")
+        metric_card(df_filtered, "NCW Rate", label="Avg. NCW %")
 
-    with col2:
+    with col3:
         df = kpi11_w_service_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "NMW Rate", label="Average NMW (%)")
+        metric_card(df_filtered, "NMW Rate", label="Avg. NMW %")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        df = kpi2a4a5_all_fin_service_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "SBK Rate", label="Avg. SBK")
+
+    with col2:
+        df = kpi8_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "WSH Rate", label="Avg. WSH")
+
+    with col3:
+        df = kpi9_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "SSC Rate", label="Avg. SSC")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        df = kpi6a7_w_service_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "ETF Rate", label="Avg. ETF %")
+
+    with col2:
+        df = kpi6a7_w_service_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "ETS Rate", label="Avg. ETS %")
+    with col3:
+        df = kpi6a7_w_service_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "CTF Rate", label="Avg. CTF %")
+
+    with col4:
+        df = kpi6a7_w_service_df
+        df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
+        metric_card(df_filtered, "CTS Rate", label="Avg. CTS %")
 
 
     df = kpi2a4a5_all_fin_service_df
@@ -802,11 +822,11 @@ with tab2:
 
     df = kpi8_df
     df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-    plotly_chart_with_labels(df_filtered, x_col='date_MMYY', y_col='WSH Rate', chart_label="Water Staffing per hundred Households (WSH) Rate", tooltip_cols=["Tool WSH"])
+    plotly_chart_with_labels(df_filtered, x_col='date_MMYY', y_col='WSH Rate', chart_label="Water Staffing per hundred Households (WSH)", tooltip_cols=["Tool WSH"])
 
     df = kpi9_df
     df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-    plotly_chart_with_labels(df_filtered, x_col='date_MMYY', y_col='SSC Rate', chart_label="Sanitation Staffing per hundred sewer Connections (SSC) Rate", tooltip_cols=["Tool SSC"])
+    plotly_chart_with_labels(df_filtered, x_col='date_MMYY', y_col='SSC Rate', chart_label="Sanitation Staffing per hundred sewer Connections (SSC)", tooltip_cols=["Tool SSC"])
 
     df = kpi10_df
     df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
@@ -823,12 +843,12 @@ with tab3:
     with col1:
         df = kpi12_w_service_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "PUW Rate", label="Average PUW (%)")
+        metric_card(df_filtered, "PUW Rate", label="Avg. PUW %")
 
     with col2:
         df = kpi13_s_service_df
         df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
-        metric_card(df_filtered, "HUS Rate", label="Average HUS (%)")
+        metric_card(df_filtered, "HUS Rate", label="Avg. HUS %")
 
     df = kpi12_w_service_df
     df_filtered = df[df[filter_col].isin(selected_values)] # Apply filter
